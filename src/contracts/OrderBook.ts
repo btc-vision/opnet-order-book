@@ -853,7 +853,7 @@ export class OPNetOrderBook extends OP_NET {
                         `Provider ${providerNode.providerId} will receive ${providerBtcAmount} BTC at address ${providerAddress}`,
                     );
 
-                    // TODO: Implement logic to send providerBtcAmount BTC to providerNode.btcReceiver
+                    // TODO: Verify that an utxo with the providerBtcAmount BTC or (less) at the same ratio is made to providerNode.btcReceiver
 
                     // Reduce provider's liquidity amount
                     providerNode.amount = SafeMath.sub(providerNode.amount, providerSupplyAmount);
