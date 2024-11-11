@@ -34,7 +34,7 @@ import { TickUpdatedEvent } from '../events/TickUpdatedEvent';
  * This must be done using "ticks" aka price positions just like any trading platform work offchain. The key difference here is that this is on-chain!
  */
 @final
-export class OPNetOrderBook extends OP_NET {
+export class OrderBook extends OP_NET {
     private readonly tickSpacing: u64 = 1000; // The minimum spacing between each tick in satoshis. This is the minimum price difference between each tick.
 
     // Storage for ticks and reservations
