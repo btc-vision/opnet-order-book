@@ -12,7 +12,7 @@ import {
 import { u128, u256 } from 'as-bignum/assembly';
 
 @final
-export class MyToken extends DeployableOP_20 {
+export class OrderBook extends DeployableOP_20 {
     public constructor() {
         super();
 
