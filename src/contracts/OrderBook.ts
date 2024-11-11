@@ -5,7 +5,6 @@ import {
     BytesWriter,
     Calldata,
     encodeSelector,
-    NetEvent,
     Revert,
     SafeMath,
     Selector,
@@ -26,21 +25,6 @@ import { LiquidityRemovalBlockedEvent } from '../events/LiquidityRemovalBlockedE
 import { SwapExecutedEvent } from '../events/SwapExecutedEvent';
 import { TickFilledDetail } from '../lib/TickFilledDetail';
 import { TickUpdatedEvent } from '../events/TickUpdatedEvent';
-
-/**
- * Event example. Note that each event you create will be specified under the folder events/EventName.ts
- */
-
-@final
-export class RndSomeEvent extends NetEvent {
-    constructor(rndValue: u256, rndAddress: Address) {
-        const data: BytesWriter = new BytesWriter(ADDRESS_BYTE_LENGTH + 32);
-        data.writeU256(rndValue);
-        data.writeAddress(rndAddress);
-
-        super('SomeEvent', data);
-    }
-}
 
 /**
  * Just like some principle of uniswap v4, the opnet order book works relatively the same way. The only key difference is that, there is only a reserve for the token being traded. The inputs token will always be bitcoin (which the contract does not hold any liquidity for) and the output token will always be the target token.
