@@ -853,7 +853,7 @@ export class OPNetOrderBook extends OP_NET {
                         `Provider ${providerNode.providerId} will receive ${providerBtcAmount} BTC at address ${providerAddress}`,
                     );
 
-                    // TODO: Verify that an utxo with the providerBtcAmount BTC or (less) at the same ratio is made to providerNode.btcReceiver
+                    // TODO: Verify that an utxo with the providerBtcAmount BTC or (less) at the same ratio is made to providerNode.btcReceiver, if not, delete reservation and revert
 
                     // Reduce provider's liquidity amount
                     providerNode.amount = SafeMath.sub(providerNode.amount, providerSupplyAmount);
@@ -885,10 +885,6 @@ export class OPNetOrderBook extends OP_NET {
             // Remove the reservation
             reservation.delete();
         }
-
-        // TODO: Implement logic to check if the buyer has provided the correct amount of BTC to the correct address and revert if not
-
-        // For now, we assume the buyer has provided the correct amount
 
         // Update total reserves
         const tokenUint = this.u256FromAddress(token);
