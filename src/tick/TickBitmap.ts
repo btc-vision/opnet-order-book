@@ -48,11 +48,7 @@ export class TickBitmap {
         const tickId = this.generateTickId(this.token, value);
 
         if (nextStoragePointer.isZero()) {
-            //if (shouldThrow) {
             throw new Error('No initialized tick found in the specified direction');
-            //} else {
-            //    return new Tick(u256.Zero, u256.Zero, u256.Zero);
-            //}
         }
 
         return new Tick(tickId, value, nextStoragePointer);
