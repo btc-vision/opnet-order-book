@@ -109,12 +109,11 @@ export class AdvancedStoredString {
     }
 
     private getPointer(key: u256): u256 {
-        const buf = new BytesWriter(34);
-        buf.writeU16(this.pointer);
+        const buf = new BytesWriter(32 + 32);
         buf.writeU256(this.subPointer);
         buf.writeU256(key);
 
-        return encodePointer(buf.getBuffer());
+        return encodePointer(this.pointer, buf.getBuffer());
     }
 
     // Helper method to save a chunk of the string into the storage slot

@@ -5,11 +5,9 @@ import {
     LIQUIDITY_PROVIDER_HEAD_POINTER,
     RESERVED_AMOUNT_INDEX_POINTERS,
     TICK_LAST_PURGE_BLOCK,
-    TICK_LEVEL_POINTER,
-    TICK_LIQUIDITY_AMOUNT_POINTER,
     TICK_RESERVED_AMOUNT_POINTER,
-} from './StoredPointers';
-import { LiquidityProviderNode } from './LiquidityProviderNode';
+} from '../lib/StoredPointers';
+import { LiquidityProviderNode } from '../lib/LiquidityProviderNode';
 
 /**
  * Tick class representing a liquidity position at a specific price level.
@@ -29,11 +27,15 @@ export class Tick {
     private lastPurgeBlock: StoredU256;
 
     private purgedThisExecutions: bool = false;
+    private readonly liquidityPointer: u256;
 
-    constructor(tickId: u256, level: u256) {
+    constructor(tickId: u256, level: u256, liquidityPointer: u256) {
         this.tickId = tickId;
         this.level = level;
-        this.liquidityAmount = u256.Zero;
+
+        this.liquidityPointer = liquidityPointer;
+
+        this.liquidityAmount = Blockchain.getStorageAt(liquidityPointer, u256.Zero);
         this.reservedAmount = u256.Zero;
 
         this.liquidityProviderHead = u256.Zero;
@@ -46,6 +48,10 @@ export class Tick {
      * Adds liquidity to this tick.
      */
     public addLiquidity(providerId: u256, amount: u256, btcReceiver: string): void {
+        if (this.liquidityProviderHead.isZero()) {
+            this.loadLiquidityProviderHead();
+        }
+
         const providerNode: LiquidityProviderNode = new LiquidityProviderNode(providerId);
         if (providerNode.load(this.tickId)) {
             // Provider exists, update amount
@@ -68,6 +74,9 @@ export class Tick {
         headStorage.value = this.liquidityProviderHead;
 
         this.liquidityAmount = SafeMath.add(this.liquidityAmount, amount);
+
+        this.saveLiquidityAmount();
+        this.saveLiquidityProviderHead();
     }
 
     public removeLiquidity(providerId: u256, amount: u256): void {
@@ -88,6 +97,8 @@ export class Tick {
         }
 
         this.liquidityAmount = SafeMath.sub(this.liquidityAmount, amount);
+
+        this.saveLiquidityAmount();
     }
 
     public getOwnedLiquidity(providerId: u256): u256 {
@@ -104,6 +115,10 @@ export class Tick {
      * If currentProviderId is zero, it returns the head of the list.
      */
     public getNextLiquidityProvider(currentProviderId: u256): LiquidityProviderNode | null {
+        if (this.liquidityProviderHead.isZero()) {
+            this.loadLiquidityProviderHead();
+        }
+
         if (currentProviderId.isZero()) {
             if (this.liquidityProviderHead.isZero()) {
                 return null;
@@ -159,6 +174,24 @@ export class Tick {
     }
 
     /**
+     * Returns the total liquidity in this tick.
+     */
+    public getTotalLiquidity(): u256 {
+        this.purgeExpiredReservations();
+
+        return this.liquidityAmount;
+    }
+
+    /**
+     * Returns the total reserved liquidity in this tick.
+     */
+    public getReservedLiquidity(): u256 {
+        this.purgeExpiredReservations();
+
+        return this.reservedAmount;
+    }
+
+    /**
      * Increases the reserved amount in this tick.
      */
     public addReservation(amount: u256): void {
@@ -178,6 +211,8 @@ export class Tick {
 
         // Increase reservedAmount
         this.reservedAmount = SafeMath.add(this.reservedAmount, amount);
+
+        this.saveReservedAmount();
     }
 
     /**
@@ -185,75 +220,44 @@ export class Tick {
      */
     public removeReservation(amount: u256): void {
         this.reservedAmount = SafeMath.sub(this.reservedAmount, amount);
-        // We don't adjust per-block storage here because the reservation is fulfilled or canceled
-    }
-
-    /**
-     * Saves the current state of the tick to storage.
-     */
-    public save(): void {
-        const storageLevel = new StoredMapU256<u256, u256>(TICK_LEVEL_POINTER, this.tickId);
-        const storageLiquidityAmount = new StoredMapU256<u256, u256>(
-            TICK_LIQUIDITY_AMOUNT_POINTER,
-            this.tickId,
-        );
-
-        const storageReservedAmount = new StoredMapU256<u256, u256>(
-            TICK_RESERVED_AMOUNT_POINTER,
-            this.tickId,
-        );
-
-        const headStorage = new StoredU256(LIQUIDITY_PROVIDER_HEAD_POINTER, this.tickId, u256.Zero);
-
-        storageLevel.set(this.tickId, this.level);
-        storageLiquidityAmount.set(this.tickId, this.liquidityAmount);
-        storageReservedAmount.set(this.tickId, this.reservedAmount);
-        headStorage.value = this.liquidityProviderHead;
+        this.saveReservedAmount();
     }
 
     /**
      * Loads the tick data from storage, including the liquidity provider head.
      */
     public load(): bool {
-        const storageLevel = new StoredMapU256<u256, u256>(TICK_LEVEL_POINTER, this.tickId);
-        const level = storageLevel.get(this.tickId);
-        if (level === null) {
-            // Tick does not exist
-            this.level = u256.Zero;
-            this.liquidityAmount = u256.Zero;
-            this.reservedAmount = u256.Zero;
-            this.liquidityProviderHead = u256.Zero;
+        this.loadReservedAmount();
 
-            return false;
-        }
-
-        const storageLiquidityAmount = new StoredMapU256<u256, u256>(
-            TICK_LIQUIDITY_AMOUNT_POINTER,
-            this.tickId,
-        );
-
-        const storageReservedAmount = new StoredMapU256<u256, u256>(
-            TICK_RESERVED_AMOUNT_POINTER,
-            this.tickId,
-        );
-
-        const headStorage = new StoredU256(LIQUIDITY_PROVIDER_HEAD_POINTER, this.tickId, u256.Zero);
-
-        this.level = level;
-        this.liquidityAmount = storageLiquidityAmount.get(this.tickId) || u256.Zero;
-        this.reservedAmount = storageReservedAmount.get(this.tickId) || u256.Zero;
-        this.liquidityProviderHead = headStorage.value || u256.Zero;
-
-        return true;
+        return !this.liquidityAmount.isZero();
     }
 
-    private saveReservedAmount(): void {
-        const storageReservedAmount = new StoredMapU256<u256, u256>(
-            TICK_RESERVED_AMOUNT_POINTER,
-            this.tickId,
-        );
+    public saveReservedAmount(): void {
+        const storageReservedAmount = new StoredMapU256(TICK_RESERVED_AMOUNT_POINTER, this.tickId);
 
         storageReservedAmount.set(this.tickId, this.reservedAmount);
+    }
+
+    public saveLiquidityAmount(): void {
+        Blockchain.setStorageAt(this.liquidityPointer, this.liquidityAmount);
+    }
+
+    public saveLiquidityProviderHead(): void {
+        const headStorage = new StoredU256(LIQUIDITY_PROVIDER_HEAD_POINTER, this.tickId, u256.Zero);
+
+        headStorage.value = this.liquidityProviderHead;
+    }
+
+    private loadReservedAmount(): void {
+        const storageReservedAmount = new StoredMapU256(TICK_RESERVED_AMOUNT_POINTER, this.tickId);
+
+        this.reservedAmount = storageReservedAmount.get(this.tickId) || u256.Zero;
+    }
+
+    private loadLiquidityProviderHead(): void {
+        const headStorage = new StoredU256(LIQUIDITY_PROVIDER_HEAD_POINTER, this.tickId, u256.Zero);
+
+        this.liquidityProviderHead = headStorage.value || u256.Zero;
     }
 
     /**
@@ -264,7 +268,7 @@ export class Tick {
         writer.writeU256(this.tickId);
         writer.writeU256(block);
 
-        return encodePointer(writer.getBuffer());
+        return encodePointer(TICK_RESERVED_AMOUNT_POINTER, writer.getBuffer());
     }
 
     /**
@@ -284,10 +288,10 @@ export class Tick {
         this.purgedThisExecutions = true;
 
         // Calculate the maximum block to purge (current block - reservation duration)
-        const maxBlockToPurge = SafeMath.sub(
-            Blockchain.block.number,
-            u256.fromU32(this.reservationDuration),
-        );
+        const maxBlockToPurge =
+            Blockchain.block.number > u256.fromU32(this.reservationDuration) // watch for underflow
+                ? SafeMath.sub(Blockchain.block.number, u256.fromU32(this.reservationDuration))
+                : u256.Zero;
 
         // If last purge block is greater than or equal to maxBlockToPurge, nothing to purge
         if (u256.ge(this.lastPurgeBlock.value, maxBlockToPurge)) {

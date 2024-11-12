@@ -22,7 +22,9 @@ export class Reservation {
     public expirationBlock: u256;
 
     // StoredMap<u256, u256> for tickId => amount reserved
-    public ticks: StoredMapU256<u256, u256>;
+    public ticks: StoredMapU256;
+
+    private readonly storageBuyer: StoredMapU256;
 
     constructor(reservationId: u256, buyer: Address, token: Address, expirationBlock: u256) {
         this.reservationId = reservationId;
@@ -32,18 +34,16 @@ export class Reservation {
         this.expirationBlock = expirationBlock;
 
         // Initialize ticks with a unique pointer
-        this.ticks = new StoredMapU256<u256, u256>(RESERVATION_TICKS_POINTER, reservationId);
+        this.ticks = new StoredMapU256(RESERVATION_TICKS_POINTER, reservationId);
+
+        this.storageBuyer = new StoredMapU256(RESERVATION_BUYER_POINTER, reservationId);
     }
 
     /**
      * Checks if the reservation exists in storage.
      */
     public exist(): bool {
-        const storageBuyer = new StoredMapU256<u256, u256>(
-            RESERVATION_BUYER_POINTER,
-            this.reservationId,
-        );
-        return storageBuyer.get(this.reservationId) !== null;
+        return !this.storageBuyer.get(this.reservationId).isZero();
     }
 
     /**
@@ -73,59 +73,40 @@ export class Reservation {
      * Saves the current state of the reservation to storage.
      */
     public save(): void {
-        const storageBuyer = new StoredMapU256<u256, u256>(
-            RESERVATION_BUYER_POINTER,
-            this.reservationId,
-        );
+        const storageToken = new StoredMapU256(RESERVATION_TOKEN_POINTER, this.reservationId);
 
-        const storageToken = new StoredMapU256<u256, u256>(
-            RESERVATION_TOKEN_POINTER,
-            this.reservationId,
-        );
-
-        const storageTotalReserved = new StoredMapU256<u256, u256>(
+        const storageTotalReserved = new StoredMapU256(
             RESERVATION_TOTAL_RESERVED_POINTER,
             this.reservationId,
         );
 
-        const storageExpirationBlock = new StoredMapU256<u256, u256>(
+        const storageExpirationBlock = new StoredMapU256(
             RESERVATION_EXPIRATION_BLOCK_POINTER,
             this.reservationId,
         );
 
-        storageBuyer.set(this.reservationId, u256.fromBytes(this.buyer));
+        this.storageBuyer.set(this.reservationId, u256.fromBytes(this.buyer));
         storageToken.set(this.reservationId, u256.fromBytes(this.token));
         storageTotalReserved.set(this.reservationId, this.totalReserved);
         storageExpirationBlock.set(this.reservationId, this.expirationBlock);
-        // Ticks are saved separately in the StoredMap
     }
 
     /**
      * Deletes the reservation from storage.
      */
     public delete(): void {
-        // Remove reservation properties from storage
-        const storageBuyer = new StoredMapU256<u256, u256>(
-            RESERVATION_BUYER_POINTER,
-            this.reservationId,
-        );
-
-        const storageToken = new StoredMapU256<u256, u256>(
-            RESERVATION_TOKEN_POINTER,
-            this.reservationId,
-        );
-
-        const storageTotalReserved = new StoredMapU256<u256, u256>(
+        const storageToken = new StoredMapU256(RESERVATION_TOKEN_POINTER, this.reservationId);
+        const storageTotalReserved = new StoredMapU256(
             RESERVATION_TOTAL_RESERVED_POINTER,
             this.reservationId,
         );
 
-        const storageExpirationBlock = new StoredMapU256<u256, u256>(
+        const storageExpirationBlock = new StoredMapU256(
             RESERVATION_EXPIRATION_BLOCK_POINTER,
             this.reservationId,
         );
 
-        storageBuyer.delete(this.reservationId);
+        this.storageBuyer.delete(this.reservationId);
         storageToken.delete(this.reservationId);
         storageTotalReserved.delete(this.reservationId);
         storageExpirationBlock.delete(this.reservationId);
@@ -135,40 +116,31 @@ export class Reservation {
      * Loads the reservation data from storage.
      */
     public load(): void {
-        const storageBuyer = new StoredMapU256<u256, u256>(
-            RESERVATION_BUYER_POINTER,
-            this.reservationId,
-        );
-
-        const buyerValue = storageBuyer.get(this.reservationId);
-        if (buyerValue === null) {
+        const buyerValue = this.storageBuyer.get(this.reservationId);
+        if (buyerValue.isZero()) {
             throw new Revert(`Reservation ${this.reservationId} not found`);
         }
 
-        const storageToken = new StoredMapU256<u256, u256>(
-            RESERVATION_TOKEN_POINTER,
-            this.reservationId,
-        );
-
-        const token = storageToken.get(this.reservationId);
-        if (token === null) {
+        const storageToken = new StoredMapU256(RESERVATION_TOKEN_POINTER, this.reservationId);
+        const token: u256 = storageToken.get(this.reservationId);
+        if (token.isZero()) {
             throw new Revert('Token not found');
         }
 
-        const storageTotalReserved = new StoredMapU256<u256, u256>(
+        const storageTotalReserved = new StoredMapU256(
             RESERVATION_TOTAL_RESERVED_POINTER,
             this.reservationId,
         );
 
-        const storageExpirationBlock = new StoredMapU256<u256, u256>(
+        const storageExpirationBlock = new StoredMapU256(
             RESERVATION_EXPIRATION_BLOCK_POINTER,
             this.reservationId,
         );
 
         this.buyer = new Address(buyerValue.toBytes(false));
         this.token = new Address(token.toBytes(false));
-        this.totalReserved = storageTotalReserved.get(this.reservationId) || u256.Zero;
-        this.expirationBlock = storageExpirationBlock.get(this.reservationId) || u256.Zero;
+        this.totalReserved = storageTotalReserved.get(this.reservationId);
+        this.expirationBlock = storageExpirationBlock.get(this.reservationId);
     }
 
     /**
