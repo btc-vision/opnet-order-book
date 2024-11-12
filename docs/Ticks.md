@@ -2,14 +2,15 @@
 
 ## Overview
 
-The **TickBitmap** is a critical data structure in the OP_NET order book system that enables efficient management and
+The **TickBitmapTest2** is a critical data structure in the OP_NET order book system that enables efficient management
+and
 traversal of active price ticks. It serves as a compact representation of which ticks (price levels) are initialized (
 active) or uninitialized (inactive) without needing to store each tick explicitly. This design optimizes storage usage
 and computational efficiency, especially when dealing with a vast range of possible price levels.
 
 ---
 
-## Mathematical Operations and Algorithm Behind TickBitmap
+## Mathematical Operations and Algorithm Behind TickBitmapTest2
 
 ### 1. Bit Representation of Ticks
 
@@ -105,10 +106,11 @@ and computational efficiency, especially when dealing with a vast range of possi
 
 ### Purpose of `getStoragePointer`
 
-The `getStoragePointer` function computes a unique storage location for each word (256-bit segment) of the TickBitmap
+The `getStoragePointer` function computes a unique storage location for each word (256-bit segment) of the
+TickBitmapTest2
 based on:
 
-- **Base Pointer**: A fixed value representing the starting point for TickBitmap storage.
+- **Base Pointer**: A fixed value representing the starting point for TickBitmapTest2 storage.
 - **Token Address**: The address of the token, ensuring separation between different tokens.
 - **Word Position**: The position of the word within the bitmap, allowing access to different segments.
 
@@ -133,7 +135,7 @@ function getStoragePointer(wordPos: i64): u256 {
 
 1. **Base Pointer (`bitmapBasePointer`)**:
 
-    - **Purpose**: Serves as a unique identifier for the TickBitmap storage region.
+    - **Purpose**: Serves as a unique identifier for the TickBitmapTest2 storage region.
     - **Shifted Left by 240 Bits**:
         - Ensures that the base pointer occupies the highest 16 bits of the 256-bit storage pointer.
         - Calculation:
@@ -143,7 +145,7 @@ function getStoragePointer(wordPos: i64): u256 {
 
 2. **Token Address (`token`)**:
 
-    - **Purpose**: Differentiates the TickBitmap of different tokens.
+    - **Purpose**: Differentiates the TickBitmapTest2 of different tokens.
     - **Shifted Left by 80 Bits**:
         - Positions the token address after the base pointer and before the word position.
         - Token addresses are 160 bits long.
@@ -181,7 +183,7 @@ function getStoragePointer(wordPos: i64): u256 {
 
 - **Unique Combination**: The storage pointer uniquely identifies a storage location based on:
 
-    1. **Base Pointer**: Distinguishes the storage region for the TickBitmap.
+    1. **Base Pointer**: Distinguishes the storage region for the TickBitmapTest2.
     2. **Token Address**: Ensures that ticks for different tokens do not overlap in storage.
     3. **Word Position**: Differentiates between different words within the bitmap.
 
@@ -254,11 +256,13 @@ function getStoragePointer(wordPos: i64): u256 {
 
 2. **Bitmap Representation for Ticks**
     - **Uniswap v3**: Uniswap v3 uses a **bitmap** for representing which ticks are active, similar to OP_NET’s
-      TickBitmap. This allows for an efficient and compact representation of initialized price ranges, enabling quick
+      TickBitmapTest2. This allows for an efficient and compact representation of initialized price ranges, enabling
+      quick
       traversal to find the next or previous tick in the order book. For instance, when executing a swap, Uniswap v3 can
       quickly find the nearest initialized tick, helping the protocol traverse from one price range to the next as
       trades are executed.
-    - **OP_NET**: OP_NET’s TickBitmap operates in a similar manner, but it’s tailored to manage the representation of
+    - **OP_NET**: OP_NET’s TickBitmapTest2 operates in a similar manner, but it’s tailored to manage the representation
+      of
       ticks as fixed price levels in an on-chain order book. It employs bitwise operations to manage initialized and
       uninitialized ticks across potentially vast ranges, similar to Uniswap’s efficiency for managing active price
       levels.

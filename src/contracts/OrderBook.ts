@@ -13,7 +13,7 @@ import {
 import { OP_NET } from '@btc-vision/btc-runtime/runtime/contracts/OP_NET';
 import { u256 } from 'as-bignum/assembly';
 import { StoredMapU256 } from '../stored/StoredMapU256';
-import { TICK_BITMAP_BASE_POINTER, TOTAL_RESERVES_POINTER } from '../lib/StoredPointers';
+import { TOTAL_RESERVES_POINTER } from '../lib/StoredPointers';
 import { sha256 } from '@btc-vision/btc-runtime/runtime/env/BlockchainEnvironment';
 import { LiquidityAddedEvent } from '../events/LiquidityAddedEvent';
 import { Tick } from '../tick/Tick';
@@ -77,7 +77,7 @@ export class OrderBook extends OP_NET {
 
     private getTickBitmap(token: Address): TickBitmap {
         // Create a TickBitmap instance as needed
-        return new TickBitmap(TICK_BITMAP_BASE_POINTER, token);
+        return new TickBitmap(token);
     }
 
     // Helper methods for ID generation and tick calculation
@@ -303,6 +303,13 @@ export class OrderBook extends OP_NET {
             throw new Revert('Invalidity period cannot be zero');
         }
 
+        // Verify that the price is minimum the tickSpacing
+        if (u256.lt(targetPriceLevel, u256.fromU64(this.tickSpacing))) {
+            throw new Revert(
+                `Price level is less than the tick spacing of ${this.tickSpacing}, ${targetPriceLevel} is invalid`,
+            );
+        }
+
         // Provider identifier as u256 derived from sender's address
         const providerId: u256 = this.u256FromAddress(Blockchain.tx.sender);
 
@@ -444,7 +451,7 @@ export class OrderBook extends OP_NET {
         const tickBitmap = this.getTickBitmap(token);
 
         // Start from the lowest possible tick index
-        let tickIndex: i64 = tickBitmap.nextInitializedTick(-1000000, false);
+        let tickIndex: i64 = tickBitmap.nextInitializedTick(0, false);
 
         // Traverse ticks using the tick bitmap
         while (u256.lt(totalReserved, minimumAmountOut)) {
@@ -552,7 +559,7 @@ export class OrderBook extends OP_NET {
         const tickBitmap = this.getTickBitmap(token);
 
         // Start from the lowest possible tick index
-        let tickIndex = tickBitmap.nextInitializedTick(-1000000, false);
+        let tickIndex = tickBitmap.nextInitializedTick(0, false);
 
         // Traverse ticks using the tick bitmap
         while (u256.gt(remainingSatoshis, u256.Zero)) {
@@ -569,7 +576,6 @@ export class OrderBook extends OP_NET {
             }
 
             const price = tick.level; // Price in satoshis per token
-
             if (price.isZero()) {
                 tickIndex = tickBitmap.nextInitializedTick(tickIndex, false);
                 continue; // Avoid division by zero
