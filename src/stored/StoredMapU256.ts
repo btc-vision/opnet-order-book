@@ -49,11 +49,10 @@ export class StoredMapU256 {
      * @returns The storage pointer as u256.
      */
     private getKeyPointer(key: u256): u256 {
-        const writer = new BytesWriter(32 + 32 + 2);
+        const writer = new BytesWriter(32 + 32);
 
-        writer.writeU16(this.pointer);
         writer.writeU256(this.subPointer);
         writer.writeU256(key);
-        return encodePointer(writer.getBuffer());
+        return encodePointer(this.pointer, writer.getBuffer());
     }
 }

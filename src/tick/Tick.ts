@@ -271,7 +271,7 @@ export class Tick {
         writer.writeU256(this.tickId);
         writer.writeU256(block);
 
-        return encodePointer(writer.getBuffer());
+        return encodePointer(TICK_RESERVED_AMOUNT_POINTER, writer.getBuffer());
     }
 
     /**

@@ -65,12 +65,11 @@ export class StoredArray<T> {
      * @returns The storage pointer as u256.
      */
     private getItemPointer(index: u256): u256 {
-        const writer = new BytesWriter(32 + 2 + 32);
-        writer.writeU16(this.pointer);
+        const writer = new BytesWriter(32 + 32);
         writer.writeU256(this.subPointer);
         writer.writeU256(index);
 
-        return encodePointer(writer.getBuffer());
+        return encodePointer(this.pointer, writer.getBuffer());
     }
 
     /**
