@@ -5,7 +5,6 @@ export const TOTAL_RESERVES_POINTER: u16 = Blockchain.nextPointer;
 
 // Define constants for StoredMap pointers
 export const PROVIDER_ADDRESS_POINTER: u16 = Blockchain.nextPointer; // Unique pointer for provider addresses
-export const TICK_LEVEL_POINTER: u16 = Blockchain.nextPointer; // Unique pointer for tick levels
 export const TICK_LIQUIDITY_AMOUNT_POINTER: u16 = Blockchain.nextPointer; // Unique pointer for tick liquidity amounts
 export const TICK_RESERVED_AMOUNT_POINTER: u16 = Blockchain.nextPointer; // Unique pointer for tick liquidity amounts
 export const TICK_LAST_PURGE_BLOCK: u16 = Blockchain.nextPointer; // Unique pointer for last purge block
