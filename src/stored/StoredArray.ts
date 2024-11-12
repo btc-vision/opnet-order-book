@@ -96,7 +96,7 @@ export class StoredArray<T> {
      * @returns The storage pointer as u256.
      */
     private getLengthPointer(): u256 {
-        const writer = new BytesWriter(34);
+        const writer = new BytesWriter(2 + 32);
         writer.writeU16(this.pointer);
         writer.writeU256(this.subPointer);
 

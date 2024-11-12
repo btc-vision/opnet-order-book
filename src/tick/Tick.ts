@@ -8,8 +8,8 @@ import {
     TICK_LEVEL_POINTER,
     TICK_LIQUIDITY_AMOUNT_POINTER,
     TICK_RESERVED_AMOUNT_POINTER,
-} from './StoredPointers';
-import { LiquidityProviderNode } from './LiquidityProviderNode';
+} from '../lib/StoredPointers';
+import { LiquidityProviderNode } from '../lib/LiquidityProviderNode';
 
 /**
  * Tick class representing a liquidity position at a specific price level.
@@ -159,6 +159,24 @@ export class Tick {
     }
 
     /**
+     * Returns the total liquidity in this tick.
+     */
+    public getTotalLiquidity(): u256 {
+        this.purgeExpiredReservations();
+
+        return this.liquidityAmount;
+    }
+
+    /**
+     * Returns the total reserved liquidity in this tick.
+     */
+    public getReservedLiquidity(): u256 {
+        this.purgeExpiredReservations();
+
+        return this.reservedAmount;
+    }
+
+    /**
      * Increases the reserved amount in this tick.
      */
     public addReservation(amount: u256): void {
@@ -199,7 +217,6 @@ export class Tick {
         );
 
         const storageReservedAmount = new StoredMapU256(TICK_RESERVED_AMOUNT_POINTER, this.tickId);
-
         const headStorage = new StoredU256(LIQUIDITY_PROVIDER_HEAD_POINTER, this.tickId, u256.Zero);
 
         storageLevel.set(this.tickId, this.level);
@@ -214,9 +231,9 @@ export class Tick {
     public load(): bool {
         const storageLevel = new StoredMapU256(TICK_LEVEL_POINTER, this.tickId);
         const level: u256 = storageLevel.get(this.tickId);
+
         if (u256.eq(level, u256.Zero)) {
             // Tick does not exist
-            this.level = u256.Zero;
             this.liquidityAmount = u256.Zero;
             this.reservedAmount = u256.Zero;
             this.liquidityProviderHead = u256.Zero;
@@ -230,7 +247,6 @@ export class Tick {
         );
 
         const storageReservedAmount = new StoredMapU256(TICK_RESERVED_AMOUNT_POINTER, this.tickId);
-
         const headStorage = new StoredU256(LIQUIDITY_PROVIDER_HEAD_POINTER, this.tickId, u256.Zero);
 
         this.level = level;
@@ -275,10 +291,10 @@ export class Tick {
         this.purgedThisExecutions = true;
 
         // Calculate the maximum block to purge (current block - reservation duration)
-        const maxBlockToPurge = SafeMath.sub(
-            Blockchain.block.number,
-            u256.fromU32(this.reservationDuration),
-        );
+        const maxBlockToPurge =
+            Blockchain.block.number > u256.fromU32(this.reservationDuration) // watch for underflow
+                ? SafeMath.sub(Blockchain.block.number, u256.fromU32(this.reservationDuration))
+                : u256.Zero;
 
         // If last purge block is greater than or equal to maxBlockToPurge, nothing to purge
         if (u256.ge(this.lastPurgeBlock.value, maxBlockToPurge)) {

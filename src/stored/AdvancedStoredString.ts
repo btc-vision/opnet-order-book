@@ -109,7 +109,7 @@ export class AdvancedStoredString {
     }
 
     private getPointer(key: u256): u256 {
-        const buf = new BytesWriter(34);
+        const buf = new BytesWriter(2 + 32 + 32);
         buf.writeU16(this.pointer);
         buf.writeU256(this.subPointer);
         buf.writeU256(key);
