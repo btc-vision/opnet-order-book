@@ -192,16 +192,13 @@ export class Tick {
      * Saves the current state of the tick to storage.
      */
     public save(): void {
-        const storageLevel = new StoredMapU256<u256, u256>(TICK_LEVEL_POINTER, this.tickId);
-        const storageLiquidityAmount = new StoredMapU256<u256, u256>(
+        const storageLevel = new StoredMapU256(TICK_LEVEL_POINTER, this.tickId);
+        const storageLiquidityAmount = new StoredMapU256(
             TICK_LIQUIDITY_AMOUNT_POINTER,
             this.tickId,
         );
 
-        const storageReservedAmount = new StoredMapU256<u256, u256>(
-            TICK_RESERVED_AMOUNT_POINTER,
-            this.tickId,
-        );
+        const storageReservedAmount = new StoredMapU256(TICK_RESERVED_AMOUNT_POINTER, this.tickId);
 
         const headStorage = new StoredU256(LIQUIDITY_PROVIDER_HEAD_POINTER, this.tickId, u256.Zero);
 
@@ -215,9 +212,9 @@ export class Tick {
      * Loads the tick data from storage, including the liquidity provider head.
      */
     public load(): bool {
-        const storageLevel = new StoredMapU256<u256, u256>(TICK_LEVEL_POINTER, this.tickId);
-        const level = storageLevel.get(this.tickId);
-        if (level === null) {
+        const storageLevel = new StoredMapU256(TICK_LEVEL_POINTER, this.tickId);
+        const level: u256 = storageLevel.get(this.tickId);
+        if (u256.eq(level, u256.Zero)) {
             // Tick does not exist
             this.level = u256.Zero;
             this.liquidityAmount = u256.Zero;
@@ -227,15 +224,12 @@ export class Tick {
             return false;
         }
 
-        const storageLiquidityAmount = new StoredMapU256<u256, u256>(
+        const storageLiquidityAmount = new StoredMapU256(
             TICK_LIQUIDITY_AMOUNT_POINTER,
             this.tickId,
         );
 
-        const storageReservedAmount = new StoredMapU256<u256, u256>(
-            TICK_RESERVED_AMOUNT_POINTER,
-            this.tickId,
-        );
+        const storageReservedAmount = new StoredMapU256(TICK_RESERVED_AMOUNT_POINTER, this.tickId);
 
         const headStorage = new StoredU256(LIQUIDITY_PROVIDER_HEAD_POINTER, this.tickId, u256.Zero);
 
@@ -248,10 +242,7 @@ export class Tick {
     }
 
     private saveReservedAmount(): void {
-        const storageReservedAmount = new StoredMapU256<u256, u256>(
-            TICK_RESERVED_AMOUNT_POINTER,
-            this.tickId,
-        );
+        const storageReservedAmount = new StoredMapU256(TICK_RESERVED_AMOUNT_POINTER, this.tickId);
 
         storageReservedAmount.set(this.tickId, this.reservedAmount);
     }

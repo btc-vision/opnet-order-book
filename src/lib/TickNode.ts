@@ -3,7 +3,7 @@ import { StoredMapU256 } from '../stored/StoredMapU256';
 import { u256 } from 'as-bignum/assembly';
 import { TICK_NEXT_VALUE_POINTER } from './StoredPointers';
 
-const tickValuePool = new StoredMapU256<u256, u256>(TICK_NEXT_VALUE_POINTER);
+const tickValuePool = new StoredMapU256(TICK_NEXT_VALUE_POINTER);
 
 export class TickNode {
     public readonly tick: Tick;
@@ -19,9 +19,8 @@ export class TickNode {
             return this._loadedNextTickNode;
         }
 
-        const nextId = tickValuePool.get(this.tick.tickId);
-
-        if (nextId === null) {
+        const nextId: u256 = tickValuePool.get(this.tick.tickId);
+        if (nextId.isZero()) {
             return null;
         }
 

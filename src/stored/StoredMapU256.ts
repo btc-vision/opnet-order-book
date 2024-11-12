@@ -5,7 +5,7 @@ import { u256 } from 'as-bignum/assembly';
  * StoredMap<K, V> implementation using u256 as keys.
  */
 @final
-export class StoredMapU256<K, V extends u256> {
+export class StoredMapU256 {
     private readonly pointer: u16;
     private readonly subPointer: u256;
 
@@ -19,10 +19,9 @@ export class StoredMapU256<K, V extends u256> {
      * @param key - The key of type K.
      * @param value - The value of type V.
      */
-    public set(key: K, value: V): void {
+    public set(key: u256, value: u256): void {
         const keyPointer = this.getKeyPointer(key);
-        const serializedValue = this.serialize(value);
-        Blockchain.setStorageAt(keyPointer, serializedValue);
+        Blockchain.setStorageAt(keyPointer, value);
     }
 
     /**
@@ -30,23 +29,16 @@ export class StoredMapU256<K, V extends u256> {
      * @param key - The key of type K.
      * @returns The value of type V or null if the key does not exist.
      */
-    public get(key: K): V | null {
+    public get(key: u256): u256 {
         const keyPointer = this.getKeyPointer(key);
-        const storedValue = Blockchain.getStorageAt(keyPointer, u256.Zero);
-
-        // If the stored value is zero, assume it doesn't exist
-        if (storedValue.isZero()) {
-            return null;
-        }
-
-        return this.deserialize(storedValue);
+        return Blockchain.getStorageAt(keyPointer, u256.Zero);
     }
 
     /**
      * Deletes the value for a given key.
      * @param key - The key of type K.
      */
-    public delete(key: K): void {
+    public delete(key: u256): void {
         const keyPointer = this.getKeyPointer(key);
         Blockchain.setStorageAt(keyPointer, u256.Zero);
     }
@@ -56,43 +48,12 @@ export class StoredMapU256<K, V extends u256> {
      * @param key - The key of type K.
      * @returns The storage pointer as u256.
      */
-    private getKeyPointer(key: K): u256 {
-        const serializedKey = this.serializeKey(key);
+    private getKeyPointer(key: u256): u256 {
         const writer = new BytesWriter(32 + 32 + 2);
 
         writer.writeU16(this.pointer);
         writer.writeU256(this.subPointer);
-        writer.writeU256(serializedKey);
+        writer.writeU256(key);
         return encodePointer(writer.getBuffer());
-    }
-
-    /**
-     * Serializes the key to u256.
-     * @param key - The key of type K.
-     * @returns The serialized key as u256.
-     */
-    private serializeKey(key: K): u256 {
-        // Assuming K is always u256 in our use case
-        return key as unknown as u256;
-    }
-
-    /**
-     * Serializes the value to u256.
-     * @param value - The value of type V.
-     * @returns The serialized value as u256.
-     */
-    private serialize(value: V): u256 {
-        // Assuming V is always u256 in our use case
-        return value as unknown as u256;
-    }
-
-    /**
-     * Deserializes the stored u256 value back to type V.
-     * @param value - The stored value as u256.
-     * @returns The deserialized value of type V.
-     */
-    private deserialize(value: u256): V {
-        // Assuming V is always u256 in our use case
-        return value as unknown as V;
     }
 }

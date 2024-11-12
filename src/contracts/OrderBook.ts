@@ -1,6 +1,7 @@
 import {
     Address,
     ADDRESS_BYTE_LENGTH,
+    AddressMemoryMap,
     Blockchain,
     BytesWriter,
     Calldata,
@@ -35,19 +36,19 @@ import { TickUpdatedEvent } from '../events/TickUpdatedEvent';
  */
 @final
 export class OrderBook extends OP_NET {
-    private readonly tickSpacing: u64 = 1000; // The minimum spacing between each tick in satoshis. This is the minimum price difference between each tick.
+    private readonly tickSpacing: u64 = 10000; // The minimum spacing between each tick in satoshis. This is the minimum price difference between each tick.
 
     // Storage for ticks and reservations
-    private totalReserves: StoredMapU256<u256, u256>; // token address (as u256) => total reserve
+    private totalReserves: StoredMapU256; // token address (as u256) => total reserve
 
-    private readonly tickHead: StoredMapU256<Address, u256>;
+    private readonly tickHead: AddressMemoryMap<u256>;
 
     public constructor() {
         super();
 
-        this.tickHead = new StoredMapU256<Address, u256>(TICK_HEAD_POINTER);
+        this.tickHead = new AddressMemoryMap(TICK_HEAD_POINTER, u256.Zero);
 
-        this.totalReserves = new StoredMapU256<u256, u256>(TOTAL_RESERVES_POINTER);
+        this.totalReserves = new StoredMapU256(TOTAL_RESERVES_POINTER);
     }
 
     public override onDeployment(_calldata: Calldata): void {
@@ -284,9 +285,26 @@ export class OrderBook extends OP_NET {
                 this.saveTickHead(token, newNode);
             } else {
                 // Traverse the list to find the insertion point
-                let current = tickHead;
-                while (current.next !== null && u256.lt(current.next.tick.level, level)) {
-                    current = current.next;
+                let current: TickNode = tickHead;
+                while (true) {
+                    const next: TickNode | null = current.next;
+                    if (next === null) {
+                        Blockchain.log(`No more ticks. Inserting at the end.`);
+                        break;
+                    }
+
+                    if (u256.lt(next.tick.level, level)) {
+                        Blockchain.log(
+                            `Stop! Found the right spot at ${next.tick.level.toString()}`,
+                        );
+                        break;
+                    }
+
+                    Blockchain.log(
+                        `current: ${current.tick.level.toString()} next: ${next.tick.level.toString()}`,
+                    );
+
+                    current = next;
                 }
 
                 // Insert the new node in the list
@@ -340,8 +358,8 @@ export class OrderBook extends OP_NET {
     }
 
     private getTickHead(token: Address): TickNode | null {
-        const tickId = this.tickHead.get(token);
-        if (tickId === null) {
+        const tickId: u256 | null = this.tickHead.get(token);
+        if (tickId.isZero()) {
             return null;
         }
 
@@ -914,7 +932,7 @@ export class OrderBook extends OP_NET {
     }
 
     private removeTickFromLinkedList(token: Address, tickId: u256): void {
-        let currentNode = this.getTickHead(token);
+        let currentNode: TickNode | null = this.getTickHead(token);
         let prevNode: TickNode | null = null;
 
         while (currentNode !== null) {
