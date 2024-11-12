@@ -29,7 +29,11 @@ export class TickBitmap {
         // Attempt to find the next storage pointer with a value greater than zero
         const nextStoragePointer: u256 = Blockchain.getNextPointerGreaterThan(storagePointer, lte);
         if (nextStoragePointer.isZero()) {
-            throw new Error('No initialized tick found in the specified direction');
+            if (shouldThrow) {
+                throw new Error('No initialized tick found in the specified direction');
+            } else {
+                return 0;
+            }
         }
 
         // Load the word at the next storage pointer

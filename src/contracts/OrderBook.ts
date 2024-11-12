@@ -573,10 +573,15 @@ export class OrderBook extends OP_NET {
         const tickBitmap = this.getTickBitmap(token);
 
         // Start from the lowest possible tick index
-        let tickIndex = tickBitmap.nextInitializedTick(0, false, true);
+        let tickIndex = tickBitmap.nextInitializedTick(0, false, false);
 
         // Traverse ticks using the tick bitmap
         while (u256.gt(remainingSatoshis, u256.Zero)) {
+            if (tickIndex == 0) {
+                // Partial fill
+                break;
+            }
+
             // Calculate the tick level from the tick index
             const level = SafeMath.mul(u256.fromU64(tickIndex), u256.fromU64(this.tickSpacing));
             const tickId = this.generateTickId(token, level);
@@ -590,7 +595,7 @@ export class OrderBook extends OP_NET {
             if (!tick.load()) {
                 Blockchain.log(`Tick not found: ${tickId}`);
                 // Should not happen if tick is initialized in tick bitmap
-                tickIndex = tickBitmap.nextInitializedTick(tickIndex, false, true);
+                tickIndex = tickBitmap.nextInitializedTick(tickIndex, false, false);
                 continue;
             }
 
@@ -625,10 +630,6 @@ export class OrderBook extends OP_NET {
 
             // Move to the next initialized tick
             tickIndex = tickBitmap.nextInitializedTick(tickIndex, false, false);
-            if (tickIndex == 0) {
-                // Partial fill
-                break;
-            }
         }
 
         if (estimatedQuantity.isZero()) {
