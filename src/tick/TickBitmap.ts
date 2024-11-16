@@ -4,6 +4,7 @@ import {
     ADDRESS_BYTE_LENGTH,
     Blockchain,
     BytesWriter,
+    Potential,
     SafeMath,
 } from '@btc-vision/btc-runtime/runtime';
 import { TICK_BITMAP_BASE_POINTER } from '../lib/StoredPointers';
@@ -31,7 +32,7 @@ export class TickBitmap {
     }
 
     // Finds the next initialized tick in the given direction
-    public nextInitializedTick(tickIndex: u64, valueAtLeast: u256, lte: boolean): Tick {
+    public nextInitializedTick(tickIndex: u64, valueAtLeast: u256, lte: boolean): Potential<Tick> {
         // Compute the initial storage pointer
         const storagePointer = TickBitmap.getStoragePointer(this.token, tickIndex);
 
@@ -48,7 +49,7 @@ export class TickBitmap {
         const tickId = this.generateTickId(this.token, value);
 
         if (nextStoragePointer.isZero()) {
-            throw new Error('No initialized tick found in the specified direction');
+            return null;
         }
 
         return new Tick(tickId, value, nextStoragePointer);
