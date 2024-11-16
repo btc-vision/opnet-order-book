@@ -627,7 +627,6 @@ export class OrderBook extends OP_NET {
             // Get the available liquidity at the tick
             const availableLiquidity = tick.getAvailableLiquidity(false);
             if (u256.le(availableLiquidity, this.minimumLiquidityForTickReservation)) {
-                Blockchain.log('ORDER_BOOK: Skipping tick due to insufficient liquidity');
                 continue;
             }
 
@@ -658,10 +657,6 @@ export class OrderBook extends OP_NET {
             } else {
                 break; // Cannot buy more tokens at this tick
             }
-
-            Blockchain.log(
-                `ORDER_BOOK: Estimated quantity: ${estimatedQuantity} - sat left: ${remainingSatoshis}`,
-            );
 
             if (u256.eq(remainingSatoshis, u256.Zero)) {
                 break; // No more satoshis to spend
