@@ -3,7 +3,6 @@ import { u256 } from 'as-bignum/assembly';
 import { StoredMapU256 } from '../stored/StoredMapU256';
 import {
     LIQUIDITY_PROVIDER_HEAD_POINTER,
-    RESERVED_AMOUNT_INDEX_POINTERS,
     TICK_LAST_PURGE_BLOCK,
     TICK_RESERVED_AMOUNT_POINTER,
 } from '../lib/StoredPointers';
@@ -148,16 +147,6 @@ export class Tick {
         } else {
             return null;
         }
-    }
-
-    public reservationsCount(): u256 {
-        const totalReserved = new StoredU256(
-            RESERVED_AMOUNT_INDEX_POINTERS,
-            this.tickId,
-            u256.Zero,
-        );
-
-        return totalReserved.value;
     }
 
     /**
