@@ -11,6 +11,11 @@ import { TICK_BITMAP_BASE_POINTER } from '../lib/StoredPointers';
 import { Tick } from './Tick';
 import { sha256 } from '../../../btc-runtime/runtime/env/global';
 
+//const maxBit80Array = new Uint8Array(10);
+//maxBit80Array.set([255, 255, 255, 255, 255, 255, 255, 255, 255, 255]);
+
+//const maxBit80 = u256.fromBytes(maxBit80Array);
+
 export class TickBitmap {
     private static readonly bitmapBasePointer: u32 = u32(TICK_BITMAP_BASE_POINTER); // Base pointer for tick bitmaps
     private readonly token: Address; // Token address
@@ -20,10 +25,16 @@ export class TickBitmap {
     }
 
     // Compute the storage pointer using base pointer and subpointer (token + wordPos)
-    public static getStoragePointer(token: Address, wordPos: u64): u256 {
+    public static getStoragePointer(token: Address, pointer: u64): u256 {
         const basePointerU256 = SafeMath.shl(u256.fromU32(this.bitmapBasePointer), 240);
         const tokenU256 = u256.fromBytes(token);
-        const wordPosU256 = u256.fromU64(wordPos);
+        const wordPosU256 = u256.fromU64(pointer);
+
+        // check for 80bit overflow of value tokenU256
+        // if (wordPosU256 > maxBit80) {
+        // even if u64
+        // throw new Error('Word position is too large');
+        // }
 
         const tokenShifted = SafeMath.shl(tokenU256, 80);
         const subpointer = SafeMath.or(tokenShifted, wordPosU256);

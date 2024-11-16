@@ -26,6 +26,7 @@ import { SwapExecutedEvent } from '../events/SwapExecutedEvent';
 import { TickFilledDetail } from '../lib/TickFilledDetail';
 import { TickUpdatedEvent } from '../events/TickUpdatedEvent';
 import { TickBitmap } from '../tick/TickBitmap';
+import { LiquidityReserved } from '../events/LiquidityReserved';
 
 /**
  * Just like some principle of uniswap v4, the opnet order book works relatively the same way. The only key difference is that, there is only a reserve for the token being traded. The inputs token will always be bitcoin (which the contract does not hold any liquidity for) and the output token will always be the target token.
@@ -42,8 +43,6 @@ export class OrderBook extends OP_NET {
     private readonly minimumAddLiquidityAmount: u256 = u256.fromU64(10); // At least 10 tokens.
     private readonly minimumLiquidityForTickReservation: u256 = u256.fromU64(1_000_000); // The minimum liquidity for a tick reservation.
     private readonly minimumSatForTickReservation: u256 = u256.fromU64(10_000); // The minimum satoshis for a tick reservation.
-
-    private readonly satoshiDecimals: u256 = u256.fromU64(100_000_000); // The number of satoshis in 1 bitcoin.
 
     // Storage for ticks and reservations
     private totalReserves: StoredMapU256; // token address (as u256) => total reserve
@@ -383,7 +382,7 @@ export class OrderBook extends OP_NET {
      * Note that for each reserved ticks, the user must pay 10,000 satoshis as a fee to the order book. For now, put TODO: Implement fee logic where it should be verified.
      *
      * @param {Address} token - The token address for which the ticks are being reserved.
-     * @param {u256} satoshisIn - The quantity of satoshis to be traded for the specified token.
+     * @param {u256} maximumAmountIn - The quantity of satoshis to be traded for the specified token.
      * @param {u256} minimumAmountOut - The minimum amount of tokens to receive for the trade.
      * @param minimumLiquidityPerTick
      * @param {u16} slippage - The maximum slippage percentage allowed for the trade. Note that this is a percentage value. (10000 = 100%)
@@ -410,7 +409,7 @@ export class OrderBook extends OP_NET {
      */
     private _reserveTicks(
         token: Address,
-        satoshisIn: u256,
+        maximumAmountIn: u256,
         minimumAmountOut: u256,
         minimumLiquidityPerTick: u256,
         slippage: u16,
@@ -420,11 +419,11 @@ export class OrderBook extends OP_NET {
             throw new Revert('ORDER_BOOK: Invalid token address');
         }
 
-        if (satoshisIn.isZero()) {
+        if (maximumAmountIn.isZero()) {
             throw new Revert('ORDER_BOOK: Maximum amount in cannot be zero');
         }
 
-        if (u256.lt(satoshisIn, this.minimumTradeSize)) {
+        if (u256.lt(maximumAmountIn, this.minimumTradeSize)) {
             throw new Revert('ORDER_BOOK: Requested amount is below minimum trade size');
         }
 
@@ -436,7 +435,7 @@ export class OrderBook extends OP_NET {
             throw new Revert('ORDER_BOOK: Slippage cannot exceed 100%');
         }
 
-        const tokenInDecimals: u256 = SafeMath.pow(
+        const tokenDecimals: u256 = SafeMath.pow(
             u256.fromU32(10),
             u256.fromU32(<u32>this.getDecimals(token)),
         );
@@ -455,7 +454,8 @@ export class OrderBook extends OP_NET {
         }
 
         let expectedAmountOut: u256 = u256.Zero;
-        let remainingSatoshis: u256 = satoshisIn;
+        let requiredSatoshis: u256 = u256.Zero;
+        let remainingSatoshis: u256 = maximumAmountIn;
 
         // Get the tick bitmap for the token
         const tickBitmap = this.getTickBitmap(token);
@@ -470,12 +470,8 @@ export class OrderBook extends OP_NET {
         );
 
         // Traverse ticks using the tick bitmap
-        while (u256.lt(expectedAmountOut, minimumAmountOutWithSlippage)) {
-            if (u256.lt(remainingSatoshis, this.minimumSatForTickReservation)) {
-                break;
-            }
-
-            // Start from the lowest possible tick index
+        while (u256.gt(remainingSatoshis, this.minimumSatForTickReservation)) {
+            // Find the next initialized tick
             const tick: Potential<Tick> = tickBitmap.nextInitializedTick(
                 level,
                 minimumLiquidityPerTick,
@@ -483,21 +479,14 @@ export class OrderBook extends OP_NET {
             );
 
             if (!tick) {
-                break;
+                break; // No more ticks available
             }
 
-            // Define the level.
             level = tick.level.toU64();
-
-            // Verify for overflow.
-            if (u256.ge(tick.level, u256.fromU64(u64.MAX_VALUE))) {
-                throw new Revert('ORDER_BOOK: Price overflow');
-            }
 
             // Load the tick
             if (!tick.load()) {
-                // No more ticks to reserve
-                break;
+                throw new Revert('Tick not found');
             }
 
             const availableLiquidity: u256 = tick.getAvailableLiquidity(true);
@@ -505,34 +494,44 @@ export class OrderBook extends OP_NET {
                 continue;
             }
 
-            const price: u256 = tick.level;
-            const maxAmountPossible = SafeMath.div(
-                SafeMath.mul(remainingSatoshis, tokenInDecimals),
+            const price: u256 = tick.level; // satoshis per token
+
+            // Calculate tokens that can be bought at this tick
+            const tokensAtTick = SafeMath.div(
+                SafeMath.mul(remainingSatoshis, tokenDecimals),
                 price,
             );
 
-            const amountToReserve: u256 = u256.lt(maxAmountPossible, availableLiquidity)
-                ? maxAmountPossible
+            // Determine the actual number of tokens to reserve at this tick
+            const tokensToReserve = u256.lt(tokensAtTick, availableLiquidity)
+                ? tokensAtTick
                 : availableLiquidity;
 
-            // Check if the amount to reserve is zero
-            if (amountToReserve.isZero()) {
-                continue;
+            if (tokensToReserve.isZero()) {
+                break; // Cannot reserve more tokens at this tick
             }
 
-            // Reserve tokens and update totals
+            // Calculate satoshis used for this tick
             const satoshisUsed: u256 = SafeMath.div(
-                SafeMath.mul(amountToReserve, price),
-                tokenInDecimals,
+                SafeMath.mul(tokensToReserve, price),
+                tokenDecimals,
             );
+
+            // Update accumulators
+            expectedAmountOut = SafeMath.add(expectedAmountOut, tokensToReserve);
+            requiredSatoshis = SafeMath.add(requiredSatoshis, satoshisUsed);
             remainingSatoshis = SafeMath.sub(remainingSatoshis, satoshisUsed);
-            expectedAmountOut = SafeMath.add(expectedAmountOut, amountToReserve);
 
-            // Add reservation
-            reservation.addReservation(tick.tickId, amountToReserve);
+            // Reserve tokens
+            reservation.addReservation(tick.tickId, tokensToReserve);
+            tick.addReservation(tokensToReserve);
 
-            // Increase reserved amount in tick
-            tick.addReservation(amountToReserve);
+            const event = new LiquidityReserved(tick.tickId, tick.level, tokensToReserve);
+            this.emitEvent(event);
+
+            if (u256.eq(remainingSatoshis, u256.Zero)) {
+                break; // No more satoshis to spend
+            }
         }
 
         if (u256.lt(expectedAmountOut, minimumAmountOutWithSlippage)) {
