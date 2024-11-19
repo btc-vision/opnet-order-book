@@ -3,6 +3,7 @@ import { u256 } from 'as-bignum/assembly';
 import { StoredMapU256 } from '../stored/StoredMapU256';
 import {
     LIQUIDITY_PROVIDER_HEAD_POINTER,
+    RESERVATION_DURATION,
     TICK_LAST_PURGE_BLOCK,
     TICK_RESERVED_AMOUNT_POINTER,
 } from '../lib/StoredPointers';
@@ -19,9 +20,6 @@ export class Tick {
     public reservedAmount: u256; // Total tokens reserved at this price level
 
     private liquidityProviderHead: u256; // Store the providerId of the head
-
-    // Reservation duration in blocks
-    private readonly reservationDuration: u32 = 5;
 
     private lastPurgeBlock: StoredU256;
 
@@ -278,8 +276,8 @@ export class Tick {
 
         // Calculate the maximum block to purge (current block - reservation duration)
         const maxBlockToPurge =
-            Blockchain.block.number > u256.fromU32(this.reservationDuration) // watch for underflow
-                ? SafeMath.sub(Blockchain.block.number, u256.fromU32(this.reservationDuration))
+            Blockchain.block.number > RESERVATION_DURATION // watch for underflow
+                ? SafeMath.sub(Blockchain.block.number, RESERVATION_DURATION)
                 : u256.Zero;
 
         // If last purge block is greater than or equal to maxBlockToPurge, nothing to purge

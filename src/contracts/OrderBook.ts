@@ -1,6 +1,7 @@
 import {
     Address,
     ADDRESS_BYTE_LENGTH,
+    AddressMemoryMap,
     Blockchain,
     BytesWriter,
     Calldata,
@@ -9,12 +10,19 @@ import {
     Revert,
     SafeMath,
     Selector,
+    StoredBoolean,
+    TransactionOutput,
     TransferHelper,
 } from '@btc-vision/btc-runtime/runtime';
 import { OP_NET } from '@btc-vision/btc-runtime/runtime/contracts/OP_NET';
 import { u256 } from 'as-bignum/assembly';
 import { StoredMapU256 } from '../stored/StoredMapU256';
-import { TOTAL_RESERVES_POINTER } from '../lib/StoredPointers';
+import {
+    FEE_CREDITS_POINTER,
+    LIQUIDITY_LIMITATION,
+    RESERVATION_DURATION,
+    TOTAL_RESERVES_POINTER,
+} from '../lib/StoredPointers';
 import { sha256 } from '@btc-vision/btc-runtime/runtime/env/BlockchainEnvironment';
 import { LiquidityAddedEvent } from '../events/LiquidityAddedEvent';
 import { Tick } from '../tick/Tick';
@@ -27,6 +35,7 @@ import { TickFilledDetail } from '../lib/TickFilledDetail';
 import { TickUpdatedEvent } from '../events/TickUpdatedEvent';
 import { TickBitmap } from '../tick/TickBitmap';
 import { LiquidityReserved } from '../events/LiquidityReserved';
+import { FEE_COLLECT_SCRIPT_PUBKEY } from '../utils/OrderBookUtils';
 
 /**
  * Just like some principle of uniswap v4, the opnet order book works relatively the same way. The only key difference is that, there is only a reserve for the token being traded. The inputs token will always be bitcoin (which the contract does not hold any liquidity for) and the output token will always be the target token.
@@ -37,12 +46,24 @@ import { LiquidityReserved } from '../events/LiquidityReserved';
  */
 @final
 export class OrderBook extends OP_NET {
-    private readonly lowerTickSpacing: u64 = 10; // The minimum spacing between each tick in satoshis. This is the minimum price difference between each tick.
+    private readonly lowerTickSpacing: u32 = 10; // The minimum spacing between each tick in satoshis. This is the minimum price difference between each tick.
 
-    private readonly minimumTradeSize: u256 = u256.fromU64(10_000); // The minimum trade size in satoshis. This is the minimum amount of satoshis that can be traded for a token.
-    private readonly minimumAddLiquidityAmount: u256 = u256.fromU64(10); // At least 10 tokens.
-    private readonly minimumLiquidityForTickReservation: u256 = u256.fromU64(1_000_000); // The minimum liquidity for a tick reservation.
-    private readonly minimumSatForTickReservation: u256 = u256.fromU64(10_000); // The minimum satoshis for a tick reservation.
+    private readonly minimumTradeSize: u256 = u256.fromU32(10_000); // The minimum trade size in satoshis. This is the minimum amount of satoshis that can be traded for a token.
+    private readonly minimumAddLiquidityAmount: u256 = u256.fromU32(10); // At least 10 tokens.
+    private readonly minimumLiquidityForTickReservation: u256 = u256.fromU32(1_000_000); // The minimum liquidity for a tick reservation.
+
+    private readonly maxTickConsumptionPercentagePerUser: u16 = 2500; // The maximum tick consumption percentage per user. 2500 = 25%
+    private readonly fixedFeeRatePerTickConsumed: u256 = u256.fromU32(4_000); // The fixed fee rate per tick consumed.
+
+    private readonly feeCredits: AddressMemoryMap<u256> = new AddressMemoryMap<u256>(
+        FEE_CREDITS_POINTER,
+        u256.Zero,
+    );
+
+    private readonly liquidityLimitation: StoredBoolean = new StoredBoolean(
+        LIQUIDITY_LIMITATION,
+        false,
+    );
 
     // Storage for ticks and reservations
     private totalReserves: StoredMapU256; // token address (as u256) => total reserve
@@ -77,9 +98,41 @@ export class OrderBook extends OP_NET {
                 return this.getReserve(calldata); // A pointer should be used to track each reserve. This method should not recompute the reserve each time it is called.
             case encodeSelector('getQuote'):
                 return this.getQuote(calldata);
+            case encodeSelector('creditsOf'):
+                return this.creditsOf(calldata);
+            case encodeSelector('limit'):
+                return this.limit(calldata);
             default:
                 return super.execute(method, calldata);
         }
+    }
+
+    private creditsOf(calldata: Calldata): BytesWriter {
+        const address: Address = calldata.readAddress();
+        const credits = this._creditsOf(address);
+
+        const writer = new BytesWriter(32);
+        writer.writeU256(credits);
+
+        return writer;
+    }
+
+    private _creditsOf(address: Address): u256 {
+        const hasAddress = this.feeCredits.has(address);
+        if (!hasAddress) return u256.Zero;
+
+        return this.feeCredits.get(address);
+    }
+
+    private limit(calldata: Calldata): BytesWriter {
+        this.onlyOwner(Blockchain.tx.sender);
+
+        this.liquidityLimitation.value = calldata.readBoolean();
+
+        const writer = new BytesWriter(1);
+        writer.writeBoolean(this.liquidityLimitation.value);
+
+        return writer;
     }
 
     // Helper methods for ID generation and tick calculation
@@ -123,7 +176,7 @@ export class OrderBook extends OP_NET {
      * @returns The calculated tick level as u256.
      */
     private calculateTickLevel(priceLevel: u256): u256 {
-        const tickSpacing = u256.fromU64(this.lowerTickSpacing);
+        const tickSpacing = u256.fromU32(this.lowerTickSpacing);
         const divided = SafeMath.div(priceLevel, tickSpacing);
 
         return SafeMath.mul(divided, tickSpacing);
@@ -311,7 +364,7 @@ export class OrderBook extends OP_NET {
         }
 
         // Verify that the price is minimum the tickSpacing
-        if (u256.lt(targetPriceLevel, u256.fromU64(this.lowerTickSpacing))) {
+        if (u256.lt(targetPriceLevel, u256.fromU32(this.lowerTickSpacing))) {
             throw new Revert(
                 `Price level is less than the tick spacing of ${this.lowerTickSpacing}, ${targetPriceLevel} is invalid`,
             );
@@ -365,6 +418,41 @@ export class OrderBook extends OP_NET {
 
     private u256FromAddress(address: Address): u256 {
         return u256.fromBytes(address);
+    }
+
+    private adjustAvailableLiquidityAtTick(liquidity: u256): u256 {
+        // round down.
+        if (!this.liquidityLimitation.value) {
+            return liquidity;
+        }
+
+        return SafeMath.div(
+            SafeMath.mul(liquidity, u256.fromU32(this.maxTickConsumptionPercentagePerUser)),
+            u256.fromU32(10000),
+        );
+    }
+
+    /** Get total fees collected */
+    private getTotalFeeCollected(): u64 {
+        const outputs = Blockchain.tx.outputs;
+
+        let totalFee: u64 = 0;
+
+        // we are certain it's not the first output.
+        for (let i = 1; i < outputs.length; i++) {
+            const output: TransactionOutput = outputs[i];
+            if (output.to !== FEE_COLLECT_SCRIPT_PUBKEY) {
+                continue;
+            }
+
+            if (u64.MAX_VALUE - totalFee < output.value) {
+                break;
+            }
+
+            totalFee += output.value;
+        }
+
+        return totalFee;
     }
 
     /**
@@ -435,6 +523,16 @@ export class OrderBook extends OP_NET {
             throw new Revert('ORDER_BOOK: Slippage cannot exceed 100%');
         }
 
+        // Corrected slippage adjustment
+        const minimumAmountOutWithSlippage: u256 = SafeMath.div(
+            SafeMath.mul(minimumAmountOut, u256.fromU32(10000 - slippage)),
+            u256.fromU32(10000),
+        );
+
+        if (minimumAmountOutWithSlippage.isZero()) {
+            throw new Revert('ORDER_BOOK: Minimum amount out with slippage cannot be zero');
+        }
+
         const tokenDecimals: u256 = SafeMath.pow(
             u256.fromU32(10),
             u256.fromU32(<u32>this.getDecimals(token)),
@@ -446,7 +544,7 @@ export class OrderBook extends OP_NET {
         // Create the reservation
         const reservation = new Reservation(
             reservationId,
-            SafeMath.add(Blockchain.block.number, u256.fromU64(5)),
+            SafeMath.add(Blockchain.block.number, RESERVATION_DURATION),
         );
 
         if (reservation.exist()) {
@@ -457,20 +555,24 @@ export class OrderBook extends OP_NET {
         let requiredSatoshis: u256 = u256.Zero;
         let remainingSatoshis: u256 = maximumAmountIn;
 
+        // Get the collected fees
+        const collectedFees: u64 = this.getTotalFeeCollected();
+        let totalCollectedFees: u256 = SafeMath.add(
+            u256.fromU64(collectedFees),
+            this._creditsOf(buyer),
+        );
+
+        // Save the fees if this reverts.
+        this.feeCredits.set(buyer, totalCollectedFees);
+
         // Get the tick bitmap for the token
         const tickBitmap = this.getTickBitmap(token);
 
         // Start level.
         let level: u64 = 0;
 
-        // Corrected slippage adjustment
-        const minimumAmountOutWithSlippage: u256 = SafeMath.div(
-            SafeMath.mul(minimumAmountOut, u256.fromU64(10000 - slippage)),
-            u256.fromU64(10000),
-        );
-
         // Traverse ticks using the tick bitmap
-        while (u256.gt(remainingSatoshis, this.minimumSatForTickReservation)) {
+        while (u256.ge(remainingSatoshis, this.minimumTradeSize)) {
             // Find the next initialized tick
             const tick: Potential<Tick> = tickBitmap.nextInitializedTick(
                 level,
@@ -489,9 +591,22 @@ export class OrderBook extends OP_NET {
                 throw new Revert('Tick not found');
             }
 
-            const availableLiquidity: u256 = tick.getAvailableLiquidity(true);
+            const availableLiquidity: u256 = this.adjustAvailableLiquidityAtTick(
+                tick.getAvailableLiquidity(true),
+            );
+
             if (u256.le(availableLiquidity, this.minimumLiquidityForTickReservation)) {
                 continue;
+            }
+            
+            if (u256.ge(totalCollectedFees, this.fixedFeeRatePerTickConsumed)) {
+                totalCollectedFees = SafeMath.sub(
+                    totalCollectedFees,
+                    this.fixedFeeRatePerTickConsumed,
+                );
+            } else {
+                // We don't continue if we can't pay the fee.
+                break;
             }
 
             const price: u256 = tick.level; // satoshis per token
@@ -537,6 +652,9 @@ export class OrderBook extends OP_NET {
         if (u256.lt(expectedAmountOut, minimumAmountOutWithSlippage)) {
             throw new Revert('ORDER_BOOK: Insufficient liquidity to reserve at requested quote.');
         }
+
+        // Save the credits
+        this.feeCredits.set(buyer, totalCollectedFees);
 
         // Save reservation
         reservation.save();
@@ -602,9 +720,10 @@ export class OrderBook extends OP_NET {
 
         // Start level
         let level: u64 = 0;
+        let ticks: u64 = 0;
 
         // Traverse ticks using the tick bitmap
-        while (u256.gt(remainingSatoshis, this.minimumSatForTickReservation)) {
+        while (u256.ge(remainingSatoshis, this.minimumTradeSize)) {
             // Find the next initialized tick
             const tick: Potential<Tick> = tickBitmap.nextInitializedTick(
                 level,
@@ -624,7 +743,10 @@ export class OrderBook extends OP_NET {
             }
 
             // Get the available liquidity at the tick
-            const availableLiquidity = tick.getAvailableLiquidity(false);
+            const availableLiquidity = this.adjustAvailableLiquidityAtTick(
+                tick.getAvailableLiquidity(false),
+            );
+
             if (u256.le(availableLiquidity, this.minimumLiquidityForTickReservation)) {
                 continue;
             }
@@ -657,6 +779,8 @@ export class OrderBook extends OP_NET {
                 break; // Cannot buy more tokens at this tick
             }
 
+            ticks++;
+
             if (u256.eq(remainingSatoshis, u256.Zero)) {
                 break; // No more satoshis to spend
             }
@@ -667,9 +791,10 @@ export class OrderBook extends OP_NET {
         }
 
         // Serialize the estimated quantity of tokens and required satoshis
-        const result = new BytesWriter(64);
+        const result = new BytesWriter(72);
         result.writeU256(estimatedQuantity); // Tokens in smallest units (considering decimals)
         result.writeU256(requiredSatoshis); // Satoshis used
+        result.writeU64(ticks);
         return result;
     }
 
