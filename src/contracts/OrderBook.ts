@@ -251,9 +251,9 @@ export class OrderBook extends OP_NET {
     private swap(calldata: Calldata): BytesWriter {
         const token: Address = calldata.readAddress();
         const isSimulation: bool = calldata.readBoolean();
-        const reservations: u16 = calldata.readU16();
+        const levels: u256[] = calldata.readTuple();
 
-        return this._swap(token, isSimulation, reservations, calldata);
+        return this._swap(token, isSimulation, levels);
     }
 
     private getReserve(calldata: Calldata): BytesWriter {
@@ -300,7 +300,7 @@ export class OrderBook extends OP_NET {
 
         const totalLiquidity: u256 = tick.getTotalLiquidity();
         const reservedLiquidity: u256 = tick.getReservedLiquidity();
-        const availableLiquidity: u256 = tick.getAvailableLiquidity(false);
+        const availableLiquidity: u256 = tick.getAvailableLiquidity();
 
         const result = new BytesWriter(96);
         result.writeU256(totalLiquidity);
@@ -542,11 +542,7 @@ export class OrderBook extends OP_NET {
         const reservationId: u256 = this.generateReservationId(buyer, token);
 
         // Create the reservation
-        const reservation = new Reservation(
-            reservationId,
-            SafeMath.add(Blockchain.block.number, RESERVATION_DURATION),
-        );
-
+        const reservation = new Reservation(reservationId);
         if (reservation.exist()) {
             throw new Revert('ORDER_BOOK: Reservation already exists or pending');
         }
@@ -592,13 +588,13 @@ export class OrderBook extends OP_NET {
             }
 
             const availableLiquidity: u256 = this.adjustAvailableLiquidityAtTick(
-                tick.getAvailableLiquidity(true),
+                tick.getAvailableLiquidity(),
             );
 
             if (u256.le(availableLiquidity, this.minimumLiquidityForTickReservation)) {
                 continue;
             }
-            
+
             if (u256.ge(totalCollectedFees, this.fixedFeeRatePerTickConsumed)) {
                 totalCollectedFees = SafeMath.sub(
                     totalCollectedFees,
@@ -744,7 +740,7 @@ export class OrderBook extends OP_NET {
 
             // Get the available liquidity at the tick
             const availableLiquidity = this.adjustAvailableLiquidityAtTick(
-                tick.getAvailableLiquidity(false),
+                tick.getAvailableLiquidity(),
             );
 
             if (u256.le(availableLiquidity, this.minimumLiquidityForTickReservation)) {
@@ -873,7 +869,6 @@ export class OrderBook extends OP_NET {
             }
 
             const reservedAmount: u256 = tick.getReservedLiquidity();
-            tick.saveReservedAmount();
 
             // Check if there are active reservations that prevent liquidity removal
             if (!reservedAmount.isZero()) {
@@ -933,8 +928,7 @@ export class OrderBook extends OP_NET {
      *
      * @param {Address} token - The address of the token to swap for BTC.
      * @param {bool} isSimulation - A flag indicating whether the swap is a simulation.
-     * @param {u16} reservations - The number of reservations to be swapped.
-     * @param {Calldata} calldata - The calldata containing the reservation IDs.
+     * @param {u256[]} levels - An array of tick positions (price levels) to be filled during the swap.
      *
      * @returns {BytesWriter} -
      * Returns a receipt containing a boolean value indicating the success of the swap.
@@ -960,12 +954,7 @@ export class OrderBook extends OP_NET {
      * @throws {Error} If the reservation is close to be expired and the swap is a simulation.
      * @throws {Error} If the buyer does not have enough BTC to complete the swap.
      */
-    private _swap(
-        token: Address,
-        isSimulation: bool,
-        reservations: u16,
-        calldata: Calldata,
-    ): BytesWriter {
+    private _swap(token: Address, isSimulation: bool, levels: u256[]): BytesWriter {
         // Validate inputs
         if (token.empty() || token.equals(Blockchain.DEAD_ADDRESS)) {
             throw new Revert('Invalid token address');
@@ -982,53 +971,31 @@ export class OrderBook extends OP_NET {
 
         // For collecting details for events
         const ticksFilled: TickFilledDetail[] = [];
-        for (let i: u16 = 0; i < reservations; i++) {
-            // Check that reservation belongs to buyer and token matches
-            const reservationId: u256 = this.generateReservationId(buyer, token);
 
-            // Load the reservation
-            const reservation = new Reservation(reservationId, u256.Zero);
-            reservation.load(); // Throws if reservation not found
+        // Check that reservation belongs to buyer and token matches
+        const reservationId: u256 = this.generateReservationId(buyer, token);
 
-            // If isSimulation is true and reservation is close to being expired
-            if (isSimulation) {
-                const blocksUntilExpiration = SafeMath.sub(
-                    reservation.expirationBlock,
-                    Blockchain.block.number,
-                );
+        // Load the reservation
+        const reservation = new Reservation(reservationId);
+        if (!reservation.valid()) {
+            throw new Revert('ORDER_BOOK: Reservation not found');
+        }
 
-                if (u256.le(blocksUntilExpiration, u256.One)) {
-                    throw new Revert('Reservation is close to being expired');
-                }
+        // If isSimulation is true and reservation is close to being expired
+        if (isSimulation) {
+            const blocksUntilExpiration = SafeMath.sub(
+                reservation.expirationBlock,
+                Blockchain.block.number,
+            );
+
+            if (u256.le(blocksUntilExpiration, u256.One)) {
+                throw new Revert('Reservation is close to being expired');
             }
+        }
 
-            const levels: u256[] = calldata.readTuple();
-
-            // Check if reservation is expired
-            if (reservation.hasExpired()) {
-                // Release the reserved amounts back to the ticks
-                for (let j = 0; j < levels.length; j++) {
-                    const level = levels[j];
-                    const tickId = this.generateTickId(token, level);
-                    const liquidityPointer = TickBitmap.getStoragePointer(token, level.toU64());
-
-                    // Load the tick
-                    const tick = new Tick(tickId, level, liquidityPointer);
-                    tick.load();
-
-                    const reservedAmount: u256 = reservation.getReservedAmountForTick(tickId);
-
-                    // Decrease reserved amount in tick
-                    tick.removeReservation(reservedAmount);
-                }
-
-                // Remove the reservation
-                reservation.delete();
-
-                throw new Revert(`Reservation ${reservationId} has expired`);
-            }
-
-            // For each tick in the reservation
+        // Check if reservation is expired
+        if (reservation.hasExpired()) {
+            // Release the reserved amounts back to the ticks
             for (let j = 0; j < levels.length; j++) {
                 const level = levels[j];
                 const tickId = this.generateTickId(token, level);
@@ -1036,86 +1003,118 @@ export class OrderBook extends OP_NET {
 
                 // Load the tick
                 const tick = new Tick(tickId, level, liquidityPointer);
-                tick.load(); // Assume that tick exists
+                tick.load();
 
                 const reservedAmount: u256 = reservation.getReservedAmountForTick(tickId);
 
-                // Compute BTC required for this tick
-                const price: u256 = tick.level;
-                const btcRequiredForTick: u256 = SafeMath.div(
-                    SafeMath.mul(reservedAmount, price),
-                    tokenInDecimals,
-                ); // round down
-
-                // Accumulate totals
-                totalBtcRequired = SafeMath.add(totalBtcRequired, btcRequiredForTick);
-                totalTokensAcquired = SafeMath.add(totalTokensAcquired, reservedAmount);
-
-                // For events
-                ticksFilled.push(
-                    new TickFilledDetail(tickId, price, reservedAmount, tick.liquidityAmount),
-                );
-
-                // Distribute BTC to liquidity providers proportionally
-                let remainingReservedAmount = reservedAmount;
-                let currentProviderId = u256.Zero;
-                let providerNode = tick.getNextLiquidityProvider(currentProviderId);
-
-                // If providerNode is null, this is a critical problem.
-                // This must be verified in unit tests to make sure nobody exploits this somehow.
-                while (providerNode !== null && u256.gt(remainingReservedAmount, u256.Zero)) {
-                    const providerLiquidity = providerNode.amount;
-
-                    if (providerLiquidity.isZero()) {
-                        currentProviderId = providerNode.providerId;
-                        providerNode = tick.getNextLiquidityProvider(currentProviderId);
-                        continue;
-                    }
-
-                    // Determine how much of the reserved amount this provider supplies
-                    let providerSupplyAmount: u256 = u256.Zero;
-                    if (u256.ge(providerLiquidity, remainingReservedAmount)) {
-                        providerSupplyAmount = remainingReservedAmount;
-                    } else {
-                        providerSupplyAmount = providerLiquidity;
-                    }
-
-                    // Compute BTC owed to provider
-                    const providerBtcAmount: u256 = SafeMath.mul(providerSupplyAmount, price);
-                    const providerAddress: string = providerNode.btcReceiver;
-
-                    Blockchain.log(
-                        `Provider ${providerNode.providerId} will receive ${providerBtcAmount} BTC at address ${providerAddress}`,
-                    );
-
-                    // TODO: Implement logic to verify BTC transfer to provider
-
-                    // Reduce provider's liquidity amount
-                    providerNode.amount = SafeMath.sub(providerNode.amount, providerSupplyAmount);
-                    providerNode.save(tick.tickId);
-
-                    // Update remainingReservedAmount
-                    remainingReservedAmount = SafeMath.sub(
-                        remainingReservedAmount,
-                        providerSupplyAmount,
-                    );
-
-                    currentProviderId = providerNode.providerId;
-                    providerNode = tick.getNextLiquidityProvider(currentProviderId);
-                }
-
-                // Transfer tokens to buyer
-                TransferHelper.safeTransfer(token, buyer, reservedAmount);
-
-                // After distributing to providers, adjust tick's liquidityAmount
-                tick.liquidityAmount = SafeMath.sub(tick.liquidityAmount, reservedAmount);
+                // Decrease reserved amount in tick
                 tick.removeReservation(reservedAmount);
-                tick.saveLiquidityAmount();
+
+                // Remove reserved amount at block
+                const block: u256 = SafeMath.sub(reservation.expirationBlock, RESERVATION_DURATION);
+                tick.removeReservedAmountAtBlock(reservedAmount, block);
             }
 
             // Remove the reservation
             reservation.delete();
+
+            throw new Revert(`Reservation ${reservationId} has expired`);
         }
+
+        // For each tick in the reservation
+        for (let j = 0; j < levels.length; j++) {
+            const level = levels[j];
+            const tickId = this.generateTickId(token, level);
+            const liquidityPointer = TickBitmap.getStoragePointer(token, level.toU64());
+
+            // Load the tick
+            const tick = new Tick(tickId, level, liquidityPointer);
+            tick.load(); // Assume that tick exists
+
+            const reservedAmount: u256 = reservation.getReservedAmountForTick(tickId);
+
+            // Compute BTC required for this tick
+            const price: u256 = tick.level;
+            const btcRequiredForTick: u256 = SafeMath.div(
+                SafeMath.mul(reservedAmount, price),
+                tokenInDecimals,
+            ); // round down
+
+            // Accumulate totals
+            totalBtcRequired = SafeMath.add(totalBtcRequired, btcRequiredForTick);
+            totalTokensAcquired = SafeMath.add(totalTokensAcquired, reservedAmount);
+
+            // For events
+            ticksFilled.push(
+                new TickFilledDetail(tickId, price, reservedAmount, tick.liquidityAmount),
+            );
+
+            // Distribute BTC to liquidity providers proportionally
+            let remainingReservedAmount = reservedAmount;
+            let currentProviderId = u256.Zero;
+            let providerNode = tick.getNextLiquidityProvider(currentProviderId);
+
+            // If providerNode is null, this is a critical problem.
+            // This must be verified in unit tests to make sure nobody exploits this somehow.
+            while (providerNode !== null && u256.gt(remainingReservedAmount, u256.Zero)) {
+                const providerLiquidity = providerNode.amount;
+
+                if (providerLiquidity.isZero()) {
+                    currentProviderId = providerNode.providerId;
+                    providerNode = tick.getNextLiquidityProvider(currentProviderId);
+                    continue;
+                }
+
+                // Determine how much of the reserved amount this provider supplies
+                let providerSupplyAmount: u256 = u256.Zero;
+                if (u256.ge(providerLiquidity, remainingReservedAmount)) {
+                    providerSupplyAmount = remainingReservedAmount;
+                } else {
+                    providerSupplyAmount = providerLiquidity;
+                }
+
+                // Compute BTC owed to provider
+                const providerBtcAmount: u256 = SafeMath.mul(providerSupplyAmount, price);
+                const providerAddress: string = providerNode.btcReceiver;
+
+                Blockchain.log(
+                    `Provider ${providerNode.providerId} will receive ${providerBtcAmount} BTC at address ${providerAddress}`,
+                );
+
+                // TODO: Implement logic to verify BTC transfer to provider
+
+                // Reduce provider's liquidity amount
+                providerNode.amount = SafeMath.sub(providerNode.amount, providerSupplyAmount);
+                providerNode.save(tick.tickId);
+
+                // Update remainingReservedAmount
+                remainingReservedAmount = SafeMath.sub(
+                    remainingReservedAmount,
+                    providerSupplyAmount,
+                );
+
+                currentProviderId = providerNode.providerId;
+                providerNode = tick.getNextLiquidityProvider(currentProviderId);
+            }
+
+            // Transfer tokens to buyer
+            TransferHelper.safeTransfer(token, buyer, reservedAmount);
+
+            // After distributing to providers, adjust tick's liquidityAmount
+            tick.liquidityAmount = SafeMath.sub(tick.liquidityAmount, reservedAmount);
+
+            // Remove the reservation
+            tick.removeReservation(reservedAmount);
+
+            // Remove reserved amount at block
+            const block: u256 = SafeMath.sub(reservation.expirationBlock, RESERVATION_DURATION);
+            tick.removeReservedAmountAtBlock(reservedAmount, block);
+
+            tick.saveLiquidityAmount();
+        }
+
+        // Remove the reservation
+        reservation.delete();
 
         if (totalBtcRequired.isZero()) {
             throw new Revert('ORDER_BOOK: Nothing acquired.');

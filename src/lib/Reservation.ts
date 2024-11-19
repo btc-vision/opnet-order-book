@@ -2,6 +2,7 @@ import { u256 } from 'as-bignum/assembly';
 import { Blockchain, SafeMath } from '@btc-vision/btc-runtime/runtime';
 import { StoredMapU256 } from '../stored/StoredMapU256';
 import {
+    RESERVATION_DURATION,
     RESERVATION_EXPIRATION_BLOCK_POINTER,
     RESERVATION_TICKS_POINTER,
     RESERVATION_TOTAL_RESERVED_POINTER,
@@ -22,10 +23,10 @@ export class Reservation {
     private storageTotalReserved: StoredMapU256;
     private storageExpirationBlock: StoredMapU256;
 
-    constructor(reservationId: u256, expirationBlock: u256) {
+    constructor(reservationId: u256) {
         this.reservationId = reservationId;
         this.totalReserved = u256.Zero;
-        this.expirationBlock = expirationBlock;
+        this.expirationBlock = u256.Zero;
 
         // Initialize ticks with a unique pointer
         this.ticks = new StoredMapU256(RESERVATION_TICKS_POINTER, reservationId);
@@ -50,7 +51,21 @@ export class Reservation {
         // hasExpired also act as a check to make sure we prevent any future reservation for 5 blocks if one have been made before
         // This prevent spamming of reservations from the same user, gifting of the same token.
 
-        return !(this.totalReserved.isZero() && this.hasExpired());
+        if (this.hasExpired()) {
+            return false;
+        }
+
+        return !this.totalReserved.isZero();
+    }
+
+    public valid(): bool {
+        this.load();
+
+        if (this.totalReserved.isZero()) {
+            return false;
+        }
+
+        return !this.hasExpired();
     }
 
     /**
@@ -78,7 +93,10 @@ export class Reservation {
      */
     public save(): void {
         this.storageTotalReserved.set(this.reservationId, this.totalReserved);
-        this.storageExpirationBlock.set(this.reservationId, this.expirationBlock);
+        this.storageExpirationBlock.set(
+            this.reservationId,
+            SafeMath.add(Blockchain.block.number, RESERVATION_DURATION),
+        );
     }
 
     /**
@@ -94,6 +112,10 @@ export class Reservation {
     public load(): void {
         this.totalReserved = this.storageTotalReserved.get(this.reservationId);
         this.expirationBlock = this.storageExpirationBlock.get(this.reservationId);
+
+        if (u256.eq(this.expirationBlock, Blockchain.block.number)) {
+            throw new Error('Reservation not active yet.');
+        }
     }
 
     /**
