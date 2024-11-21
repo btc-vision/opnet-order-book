@@ -3,26 +3,35 @@ import { u256 } from 'as-bignum/assembly';
 import { StoredMapU256 } from '../stored/StoredMapU256';
 import {
     LIQUIDITY_PROVIDER_HEAD_POINTER,
+    LIQUIDITY_PROVIDER_LAST_POINTER,
+    LIQUIDITY_PROVIDER_RESERVED_AT_BLOCK_CURRENT_COUNT,
+    LIQUIDITY_PROVIDER_RESERVED_AT_BLOCK_FOR_PROVIDER_ID,
+    LIQUIDITY_PROVIDER_RESERVED_AT_BLOCK_FOR_PROVIDER_VALUE,
     RESERVATION_DURATION,
     TICK_LAST_PURGE_BLOCK,
     TICK_RESERVED_AMOUNT_POINTER,
 } from '../lib/StoredPointers';
-import { LiquidityProviderNode } from '../lib/LiquidityProviderNode';
+import { Provider } from '../lib/Provider';
+import { Reservation } from '../lib/Reservation';
 
 /**
  * Tick class representing a liquidity position at a specific price level.
  */
 @final
 export class Tick {
+    public static readonly MINIMUM_VALUE_POSITION: u256 = u256.fromU32(1_000);
+
     public tickId: u256;
     public level: u256; // Price level (in satoshis per token)
     public liquidityAmount: u256; // Total tokens available at this price level
     public reservedAmount: u256; // Total tokens reserved at this price level
-    public blockReservedAmount: u256; // Total tokens reserved at this price level for the current block
 
-    private liquidityProviderHead: u256; // Store the providerId of the head
+    private readonly liquidityProviderHead: StoredU256; // Store the first liquidity provider
+    private readonly liquidityProviderLast: StoredU256; // Store the last liquidity provider
 
     private lastPurgeBlock: StoredU256;
+
+    private storageReservedAmount: StoredU256;
 
     private purgedThisExecutions: bool = false;
     private readonly liquidityPointer: u256;
@@ -32,17 +41,32 @@ export class Tick {
         this.level = level;
 
         this.liquidityPointer = liquidityPointer;
-        this.blockReservedAmount = u256.Zero;
 
         const liquidityAmount = Blockchain.getStorageAt(liquidityPointer, u256.Zero);
         this.liquidityAmount = liquidityAmount || u256.Zero;
 
-        this.liquidityProviderHead = u256.Zero;
+        this.liquidityProviderHead = new StoredU256(
+            LIQUIDITY_PROVIDER_HEAD_POINTER,
+            this.tickId,
+            u256.Zero,
+        );
 
-        const storageReservedAmount = new StoredMapU256(TICK_RESERVED_AMOUNT_POINTER, tickId);
-        this.reservedAmount = storageReservedAmount.get(u256.Zero) || u256.Zero;
+        this.liquidityProviderLast = new StoredU256(
+            LIQUIDITY_PROVIDER_LAST_POINTER,
+            this.tickId,
+            u256.Zero,
+        );
 
-        // Initialize liquidityProviders with a unique pointer, e.g., tickId as subPointer
+        const storageReservedAmount = new StoredU256(
+            TICK_RESERVED_AMOUNT_POINTER,
+            tickId,
+            u256.Zero,
+        );
+
+        this.storageReservedAmount = storageReservedAmount;
+        this.reservedAmount = storageReservedAmount.value;
+
+        // Initialize lastPurgeBlock
         this.lastPurgeBlock = new StoredU256(TICK_LAST_PURGE_BLOCK, tickId, u256.Zero);
     }
 
@@ -50,105 +74,88 @@ export class Tick {
      * Adds liquidity to this tick.
      */
     public addLiquidity(providerId: u256, amount: u256, btcReceiver: string): void {
-        if (this.liquidityProviderHead.isZero()) {
-            this.loadLiquidityProviderHead();
+        const providerNode: Provider = new Provider(providerId, this.tickId);
+
+        // Check if the current head is defined or not.
+        if (this.liquidityProviderHead.value.isZero()) {
+            // If not defined, we set the first provider of the chain.
+            this.liquidityProviderHead.value = providerId;
         }
 
-        const providerNode: LiquidityProviderNode = new LiquidityProviderNode(providerId);
-        if (providerNode.load(this.tickId)) {
-            // Provider exists, update amount
-            providerNode.amount = SafeMath.add(providerNode.amount, amount);
-        } else {
-            // New provider, add to the linked list
-            providerNode.amount = amount;
-            providerNode.btcReceiver = btcReceiver;
-            providerNode.nextProviderId = this.liquidityProviderHead;
+        // If the provider exists, update amount, user keeps his position regarding his liquidity.
+        providerNode.amount.value = SafeMath.add(providerNode.amount.value, amount);
+        providerNode.btcReceiver = btcReceiver;
 
-            // Update the head of the linked list
-            this.liquidityProviderHead = providerId;
+        // Manage the tail of the chain.
+        if (
+            !this.liquidityProviderLast.value.isZero() &&
+            this.liquidityProviderLast.value != providerId
+        ) {
+            // Set previous
+            providerNode.previousProviderId.value = this.liquidityProviderLast.value;
+
+            // Set next
+            const previousProvider = new Provider(this.liquidityProviderLast.value, this.tickId);
+
+            previousProvider.nextProviderId.value = providerId;
         }
 
-        // Save the provider node
-        providerNode.save(this.tickId);
-
-        // Update the stored head pointer
-        const headStorage = new StoredU256(LIQUIDITY_PROVIDER_HEAD_POINTER, this.tickId, u256.Zero);
-        headStorage.value = this.liquidityProviderHead;
-
+        this.liquidityProviderLast.value = providerId;
         this.liquidityAmount = SafeMath.add(this.liquidityAmount, amount);
 
         this.saveLiquidityAmount();
-        this.saveLiquidityProviderHead();
     }
 
-    public removeLiquidity(providerId: u256, amount: u256): void {
-        const providerNode = new LiquidityProviderNode(providerId);
-        if (!providerNode.load(this.tickId)) {
-            throw new Revert('Provider does not exist in this tick');
+    /**
+     * DO NOT USE THIS METHOD WHERE IT IS UNSAFE. CHECKS ARE REQUIRED.
+     * @param provider
+     */
+    public removeLiquidity(provider: Provider): void {
+        this.liquidityAmount = SafeMath.sub(this.liquidityAmount, provider.amount.value);
+        this.reservedAmount = SafeMath.sub(this.reservedAmount, provider.reservedAmount.value);
+
+        provider.reservedAmount.value = u256.Zero;
+        provider.amount.value = u256.Zero;
+
+        const previousProviderId: u256 = provider.previousProviderId.value;
+        const nextProviderId: u256 = provider.nextProviderId.value;
+
+        // If the provider is the head of the chain
+        if (this.liquidityProviderHead.value == provider.providerId) {
+            this.liquidityProviderHead.value = nextProviderId;
+        } else if (!previousProviderId.isZero()) {
+            const previousProvider = new Provider(previousProviderId, this.tickId);
+            previousProvider.nextProviderId.value = nextProviderId;
         }
 
-        if (u256.gt(amount, providerNode.amount)) {
-            throw new Revert('Cannot remove more than provided liquidity');
+        // If the provider is the tail of the chain
+        if (this.liquidityProviderLast.value == provider.providerId) {
+            this.liquidityProviderLast.value = previousProviderId;
+        } else if (!nextProviderId.isZero()) {
+            const nextProvider = new Provider(nextProviderId, this.tickId);
+            nextProvider.previousProviderId.value = previousProviderId;
         }
 
-        providerNode.amount = SafeMath.sub(providerNode.amount, amount);
-        if (providerNode.amount.isZero()) {
-            // Cost way too much gas to delete the node, so we just set the amount to zero
-        } else {
-            providerNode.save(this.tickId);
-        }
-
-        this.liquidityAmount = SafeMath.sub(this.liquidityAmount, amount);
-
-        this.saveLiquidityAmount();
-    }
-
-    public getOwnedLiquidity(providerId: u256): u256 {
-        const providerNode = new LiquidityProviderNode(providerId);
-        if (!providerNode.load(this.tickId)) {
-            return u256.Zero;
-        }
-
-        return providerNode.amount;
+        provider.nextProviderId.value = u256.Zero;
+        provider.previousProviderId.value = u256.Zero;
     }
 
     /**
      * Returns the next liquidity provider in the linked list.
      * If currentProviderId is zero, it returns the head of the list.
      */
-    public getNextLiquidityProvider(currentProviderId: u256): LiquidityProviderNode | null {
-        if (this.liquidityProviderHead.isZero()) {
-            this.loadLiquidityProviderHead();
-        }
-
+    public getNextLiquidityProvider(currentProviderId: u256): Provider | null {
         if (currentProviderId.isZero()) {
-            if (this.liquidityProviderHead.isZero()) {
+            if (this.liquidityProviderHead.value.isZero()) {
                 return null;
             }
-
-            const providerNode = new LiquidityProviderNode(this.liquidityProviderHead);
-            if (providerNode.load(this.tickId)) {
-                return providerNode;
-            } else {
-                return null;
-            }
-        }
-
-        const currentProviderNode = new LiquidityProviderNode(currentProviderId);
-        if (!currentProviderNode.load(this.tickId)) {
-            return null;
-        }
-
-        const nextProviderId = currentProviderNode.nextProviderId;
-        if (nextProviderId.isZero()) {
-            return null;
-        }
-
-        const nextProviderNode = new LiquidityProviderNode(nextProviderId);
-        if (nextProviderNode.load(this.tickId)) {
-            return nextProviderNode;
+            return new Provider(this.liquidityProviderHead.value, this.tickId);
         } else {
-            return null;
+            const currentProvider = new Provider(currentProviderId, this.tickId);
+            if (currentProvider.nextProviderId.value.isZero()) {
+                return null;
+            }
+            return new Provider(currentProvider.nextProviderId.value, this.tickId);
         }
     }
 
@@ -179,99 +186,212 @@ export class Tick {
         return this.reservedAmount;
     }
 
+    public removeReservationForProvider(provider: Provider): void {
+        const reservedAmount: u256 = provider.reservedAmount.value;
+        provider.reservedAmount.value = u256.Zero;
+
+        this.reservedAmount = SafeMath.sub(this.reservedAmount, reservedAmount);
+    }
+
     /**
      * Increases the reserved amount in this tick.
      */
-    public addReservation(amount: u256): void {
+    public addReservation(reservation: Reservation, amount: u256, tokenDecimals: u256): u256 {
         this.purgeExpiredReservations();
 
+        // Quick check, gas efficient
         const availableLiquidity = this.getAvailableLiquidity();
         if (u256.gt(amount, availableLiquidity)) {
             throw new Revert('Not enough liquidity left to reserve');
         }
 
-        // Increase reservedAmount
-        this.reservedAmount = SafeMath.add(this.reservedAmount, amount);
-        this.blockReservedAmount = SafeMath.add(this.blockReservedAmount, amount);
+        const expirationBlock = SafeMath.add(Blockchain.block.number, RESERVATION_DURATION);
 
+        const countStoredU256 = this.getReservedAmountAtBlock(expirationBlock);
+        const mapProviders = this.getProviderIdAtBlock(expirationBlock);
+        const mapValues = this.getReservedAmountAtBlockForProvider(expirationBlock);
+
+        let amountToReserve: u256 = amount;
+
+        let isFirstProvider: boolean = true;
+        let providerNode = this.getNextLiquidityProvider(u256.Zero);
+        while (providerNode && !u256.eq(amountToReserve, u256.Zero)) {
+            const availableProviderLiquidity = SafeMath.sub(
+                providerNode.amount.value,
+                providerNode.reservedAmount.value,
+            );
+
+            if (!availableProviderLiquidity.isZero()) {
+                const satoshisValue: u256 = SafeMath.div(
+                    SafeMath.mul(availableProviderLiquidity, this.level),
+                    tokenDecimals,
+                );
+
+                // If the reserve amount is less than the minimum value, burn (dust).
+                if (u256.lt(satoshisValue, Tick.MINIMUM_VALUE_POSITION)) {
+                    // BURN the remaining tokens.
+                    this.burnTokens(providerNode);
+                    continue;
+                }
+
+                const reserveAmount: u256 = u256.lt(availableProviderLiquidity, amountToReserve)
+                    ? availableProviderLiquidity
+                    : amountToReserve;
+
+                const reserveAmountSatoshisValue: u256 = SafeMath.div(
+                    SafeMath.mul(reserveAmount, this.level),
+                    tokenDecimals,
+                );
+
+                // If the amount of token to reserve is less than the minimum value, skip.
+                if (u256.lt(reserveAmountSatoshisValue, Tick.MINIMUM_VALUE_POSITION)) {
+                    Blockchain.log(`Skipping reservation of ${reserveAmount} tokens, too small.`);
+                    break;
+                }
+
+                // Update provider's reserved amount
+                providerNode.reservedAmount.value = SafeMath.add(
+                    providerNode.reservedAmount.value,
+                    reserveAmount,
+                );
+
+                this.reservedAmount = SafeMath.add(this.reservedAmount, reserveAmount);
+
+                // Update reservation
+                reservation.addProviderReservation(providerNode, reserveAmount);
+
+                if (isFirstProvider) {
+                    reservation.setReservationStartingTick(this.tickId, providerNode.providerId);
+                    isFirstProvider = false;
+                }
+
+                // Decrease remaining amount to reserve
+                amountToReserve = SafeMath.sub(amountToReserve, reserveAmount);
+
+                // Track reserved amount per provider at expiration block
+                const reservedAmount = mapValues.get(providerNode.providerId);
+                if (reservedAmount.isZero()) {
+                    const count = countStoredU256.value || u256.Zero;
+                    mapProviders.set(count, providerNode.providerId);
+
+                    countStoredU256.value = SafeMath.add(count, u256.One);
+                }
+
+                mapValues.set(providerNode.providerId, SafeMath.add(reservedAmount, reserveAmount));
+            } else {
+                throw new Revert(
+                    `This error should never happen. If it does, there is a critical bug.`,
+                );
+            }
+
+            providerNode = this.getNextLiquidityProvider(providerNode.providerId);
+        }
+
+        this.saveLiquidityAmount();
         this.saveReservedAmount();
-        this.saveBlockReservedAmount();
+
+        return SafeMath.sub(amount, amountToReserve);
     }
 
     /**
-     * Decreases the reserved amount in this tick.
+     * Consumes liquidity from this tick and provider.
      */
-    public removeReservation(amount: u256): void {
-        this.reservedAmount = SafeMath.sub(this.reservedAmount, amount);
-        this.saveReservedAmount();
-    }
+    public consumeLiquidity(
+        provider: Provider,
+        consumed: u256,
+        reserved: u256,
+        tokenDecimals: u256,
+        expirationBlock: u256,
+    ): void {
+        if (u256.lt(provider.amount.value, consumed)) {
+            throw new Revert('Not enough liquidity left to consume');
+        }
 
-    /**
-     * Decreases the reserved amount in this tick at a specific block.
-     * @param block
-     * @param amount
-     */
-    public removeReservedAmountAtBlock(block: u256, amount: u256): void {
-        const reservedAmountAtBlock = this.getBlockReservedAmount(block);
-        reservedAmountAtBlock.set(
-            this.tickId,
-            SafeMath.sub(reservedAmountAtBlock.get(this.tickId), amount),
+        provider.amount.value = SafeMath.sub(provider.amount.value, consumed);
+        this.liquidityAmount = SafeMath.sub(this.liquidityAmount, consumed);
+
+        const providerAvailableLiquidity = provider.amount.value;
+        const value = SafeMath.div(
+            SafeMath.mul(providerAvailableLiquidity, this.level),
+            tokenDecimals,
         );
+
+        if (u256.lt(value, Tick.MINIMUM_VALUE_POSITION)) {
+            this.removeLiquidity(provider);
+        }
+
+        if (!provider.reservedAmount.value.isZero()) {
+            this.removeReservationForProvider(provider);
+        }
+
+        const mapValues: StoredMapU256 = this.getReservedAmountAtBlockForProvider(expirationBlock);
+        const valueAtExpiration: u256 = mapValues.get(provider.providerId);
+        if (valueAtExpiration.isZero()) {
+            throw new Revert('No reserved amount found for this provider (consume)');
+        }
+
+        mapValues.set(provider.providerId, SafeMath.sub(valueAtExpiration, reserved));
     }
 
     /**
      * Loads the tick data from storage, including the liquidity provider head.
      */
     public load(): bool {
-        this.loadBlockReservedAmount();
-
         return !this.liquidityAmount.isZero();
     }
 
     public saveReservedAmount(): void {
-        const storageReservedAmount = new StoredMapU256(TICK_RESERVED_AMOUNT_POINTER, this.tickId);
-        storageReservedAmount.set(u256.Zero, this.reservedAmount);
+        this.storageReservedAmount.value = this.reservedAmount;
     }
 
     public saveLiquidityAmount(): void {
         Blockchain.setStorageAt(this.liquidityPointer, this.liquidityAmount);
     }
 
-    public saveLiquidityProviderHead(): void {
-        const headStorage = new StoredU256(LIQUIDITY_PROVIDER_HEAD_POINTER, this.tickId, u256.Zero);
-
-        headStorage.value = this.liquidityProviderHead;
-    }
-
-    private loadLiquidityProviderHead(): void {
-        const headStorage = new StoredU256(LIQUIDITY_PROVIDER_HEAD_POINTER, this.tickId, u256.Zero);
-
-        this.liquidityProviderHead = headStorage.value || u256.Zero;
-    }
-
-    private loadBlockReservedAmount(): void {
-        const storageReservedAmount = new StoredMapU256(
-            TICK_RESERVED_AMOUNT_POINTER,
-            Blockchain.block.number,
+    private burnTokens(providerNode: Provider): void {
+        Blockchain.log(
+            `Burning ${providerNode.amount.value} tokens from provider ${providerNode.providerId}. Liquidity left too small.`,
         );
 
-        this.blockReservedAmount = storageReservedAmount.get(this.tickId) || u256.Zero;
+        this.removeLiquidity(providerNode);
     }
 
-    private saveBlockReservedAmount(): void {
-        const storageReservedAmount = new StoredMapU256(
-            TICK_RESERVED_AMOUNT_POINTER,
-            Blockchain.block.number,
-        );
+    private getPurgeSubPointer(blockId: u256): u256 {
+        // Save some bytes by masking only the first byte of the blockId
+        const blockIdMasked = SafeMath.and(blockId, u256.fromU32(0xff));
 
-        storageReservedAmount.set(this.tickId, this.blockReservedAmount);
+        // Now we place this masked blockId in the first byte of the provider's subPointer
+        return SafeMath.or(SafeMath.shl(blockIdMasked, 248), this.tickId);
     }
 
     /**
-     * Retrieves the StoredU256 for the reserved amount at a given block.
+     * Reservation duration should not be greater than 255 blocks.
+     * @param blockId
+     * @private
      */
-    private getBlockReservedAmount(block: u256): StoredMapU256 {
-        return new StoredMapU256(TICK_RESERVED_AMOUNT_POINTER, block);
+    private getProviderIdAtBlock(blockId: u256): StoredMapU256 {
+        return new StoredMapU256(
+            LIQUIDITY_PROVIDER_RESERVED_AT_BLOCK_FOR_PROVIDER_ID,
+            this.getPurgeSubPointer(blockId),
+        );
+    }
+
+    private getReservedAmountAtBlockForProvider(blockId: u256): StoredMapU256 {
+        return new StoredMapU256(
+            LIQUIDITY_PROVIDER_RESERVED_AT_BLOCK_FOR_PROVIDER_VALUE,
+            this.getPurgeSubPointer(blockId),
+        );
+    }
+
+    private getReservedAmountAtBlock(blockId: u256): StoredU256 {
+        const maskedBlockId = SafeMath.and(blockId, u256.fromU32(0xff));
+        const subPointer = SafeMath.or(SafeMath.shl(maskedBlockId, 248), this.tickId);
+
+        return new StoredU256(
+            LIQUIDITY_PROVIDER_RESERVED_AT_BLOCK_CURRENT_COUNT,
+            subPointer,
+            u256.Zero,
+        );
     }
 
     /**
@@ -281,57 +401,55 @@ export class Tick {
         if (this.purgedThisExecutions) return; // No need to purge twice in the same execution
         this.purgedThisExecutions = true;
 
-        const startBlock =
-            this.lastPurgeBlock.value > RESERVATION_DURATION
-                ? SafeMath.sub(this.lastPurgeBlock.value, RESERVATION_DURATION)
-                : u256.Zero;
+        const startBlock = this.lastPurgeBlock.value;
+        const endBlock = SafeMath.sub(Blockchain.block.number, u256.One);
 
-        // Ensure we don't loop over more than RESERVATION_DURATION blocks
-        const endBlock = u256.eq(this.lastPurgeBlock.value, Blockchain.block.number)
-            ? SafeMath.sub(Blockchain.block.number, u256.One)
-            : this.lastPurgeBlock.value;
-
-        // Update last purge block to the max block purged
+        // Update last purge block to the current block
         this.lastPurgeBlock.value = Blockchain.block.number;
 
         // If startBlock is greater than endBlock, nothing to purge
-        if (u256.ge(startBlock, endBlock)) {
+        if (u256.gt(startBlock, endBlock)) {
             return;
         }
 
-        // Iterate over blocks to purge
-        let updated: bool = false;
         for (
             let blockId = startBlock;
             u256.le(blockId, endBlock) && !u256.eq(blockId, Blockchain.block.number);
             blockId = SafeMath.add(blockId, u256.One)
         ) {
-            const up = this.purgeBlock(blockId);
-            if (up) updated = true;
+            this.purgeBlock(blockId);
         }
-
-        if (updated) this.saveReservedAmount();
     }
 
-    private purgeBlock(blockId: u256): bool {
-        // Retrieve the reserved amount for this block
-        const expiredReservedAmount = this.getBlockReservedAmount(blockId);
-        const amount = expiredReservedAmount.get(this.tickId) || u256.Zero;
+    private purgeBlock(blockId: u256): void {
+        // Load reservations that expired at this block
+        const countStoredU256 = this.getReservedAmountAtBlock(blockId);
+        const count: u32 = countStoredU256.value.toU32();
+        if (count == 0) return;
 
-        if (!amount.isZero()) {
+        const mapProviders: StoredMapU256 = this.getProviderIdAtBlock(blockId);
+        const mapValues: StoredMapU256 = this.getReservedAmountAtBlockForProvider(blockId);
+        for (let i: u32 = 0; i < count; i++) {
+            const providerId: u256 = mapProviders.get(u256.fromU32(i));
+            const reservedTotal: u256 = mapValues.get(providerId);
+            const provider = new Provider(providerId, this.tickId);
+
             Blockchain.log(
-                `Purging ${amount} at block ${blockId}, current block ${Blockchain.block.number}`,
+                `[PURGE] Provider ${providerId} reserved ${reservedTotal} at block ${blockId}. Purging.`,
             );
 
-            // Subtract the expired amount from reservedAmount
-            this.reservedAmount = SafeMath.sub(this.reservedAmount, amount);
+            provider.reservedAmount.value = SafeMath.sub(
+                provider.reservedAmount.value,
+                reservedTotal,
+            );
 
-            // Reset the reserved amount at this block
-            expiredReservedAmount.set(this.tickId, u256.Zero);
+            this.reservedAmount = SafeMath.sub(this.reservedAmount, reservedTotal);
 
-            return true;
+            // Clean up the mappings
+            mapValues.set(providerId, u256.Zero);
         }
 
-        return false;
+        // Reset count for this block
+        countStoredU256.value = u256.Zero;
     }
 }

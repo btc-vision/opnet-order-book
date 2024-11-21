@@ -36,6 +36,7 @@ import { TickUpdatedEvent } from '../events/TickUpdatedEvent';
 import { TickBitmap } from '../tick/TickBitmap';
 import { LiquidityReserved } from '../events/LiquidityReserved';
 import { FEE_COLLECT_SCRIPT_PUBKEY } from '../utils/OrderBookUtils';
+import { Provider } from '../lib/Provider';
 
 /**
  * Just like some principle of uniswap v4, the opnet order book works relatively the same way. The only key difference is that, there is only a reserve for the token being traded. The inputs token will always be bitcoin (which the contract does not hold any liquidity for) and the output token will always be the target token.
@@ -614,13 +615,21 @@ export class OrderBook extends OP_NET {
             );
 
             // Determine the actual number of tokens to reserve at this tick
-            const tokensToReserve = u256.lt(tokensAtTick, availableLiquidity)
+            let tokensToReserve: u256 = u256.lt(tokensAtTick, availableLiquidity)
                 ? tokensAtTick
                 : availableLiquidity;
 
             if (tokensToReserve.isZero()) {
                 break; // Cannot reserve more tokens at this tick
             }
+
+            // Reserve tokens
+            tokensToReserve = tick.addReservation(reservation, tokensToReserve, tokenDecimals);
+            if (tokensToReserve.isZero()) {
+                continue;
+            }
+
+            reservation.addReservation(tokensToReserve);
 
             // Calculate satoshis used for this tick
             const satoshisUsed: u256 = SafeMath.div(
@@ -632,10 +641,6 @@ export class OrderBook extends OP_NET {
             expectedAmountOut = SafeMath.add(expectedAmountOut, tokensToReserve);
             requiredSatoshis = SafeMath.add(requiredSatoshis, satoshisUsed);
             remainingSatoshis = SafeMath.sub(remainingSatoshis, satoshisUsed);
-
-            // Reserve tokens
-            reservation.addReservation(tick.tickId, tokensToReserve);
-            tick.addReservation(tokensToReserve);
 
             const event = new LiquidityReserved(tick.tickId, tick.level, tokensToReserve);
             this.emitEvent(event);
@@ -755,6 +760,10 @@ export class OrderBook extends OP_NET {
                 price,
             );
 
+            if (u256.lt(tokensAtTick, Tick.MINIMUM_VALUE_POSITION)) {
+                continue;
+            }
+
             // Determine the actual number of tokens to buy at this tick
             const tokensToBuy = u256.lt(tokensAtTick, availableLiquidity)
                 ? tokensAtTick
@@ -863,12 +872,13 @@ export class OrderBook extends OP_NET {
                 continue; // Skip if tick does not exist
             }
 
-            const providerLiquidity = tick.getOwnedLiquidity(providerId);
+            const provider: Provider = new Provider(providerId, tickId);
+            const providerLiquidity: u256 = provider.amount.value;
             if (providerLiquidity.isZero()) {
                 continue; // Provider has no liquidity in this tick
             }
 
-            const reservedAmount: u256 = tick.getReservedLiquidity();
+            const reservedAmount: u256 = provider.reservedAmount.value;
 
             // Check if there are active reservations that prevent liquidity removal
             if (!reservedAmount.isZero()) {
@@ -881,7 +891,8 @@ export class OrderBook extends OP_NET {
             this.updateTotalReserve(tokenUint, providerLiquidity, false);
 
             // Update tick by removing liquidity from provider
-            tick.removeLiquidity(providerId, providerLiquidity);
+            tick.removeLiquidity(provider);
+            tick.saveLiquidityAmount();
 
             // Accumulate total tokens returned
             totalTokensReturned = SafeMath.add(totalTokensReturned, providerLiquidity);
@@ -1005,14 +1016,8 @@ export class OrderBook extends OP_NET {
                 const tick = new Tick(tickId, level, liquidityPointer);
                 tick.load();
 
-                const reservedAmount: u256 = reservation.getReservedAmountForTick(tickId);
-
                 // Decrease reserved amount in tick
-                tick.removeReservation(reservedAmount);
-
-                // Remove reserved amount at block
-                const block: u256 = SafeMath.sub(reservation.expirationBlock, RESERVATION_DURATION);
-                tick.removeReservedAmountAtBlock(reservedAmount, block);
+                reservation.cancelReservation(tick);
             }
 
             // Remove the reservation
@@ -1031,7 +1036,7 @@ export class OrderBook extends OP_NET {
             const tick = new Tick(tickId, level, liquidityPointer);
             tick.load(); // Assume that tick exists
 
-            const reservedAmount: u256 = reservation.getReservedAmountForTick(tickId);
+            //const reservedAmount: u256 = reservation.getReservedAmountForTick(tickId);
 
             // Compute BTC required for this tick
             const price: u256 = tick.level;
@@ -1057,7 +1062,7 @@ export class OrderBook extends OP_NET {
             // If providerNode is null, this is a critical problem.
             // This must be verified in unit tests to make sure nobody exploits this somehow.
             while (providerNode !== null && u256.gt(remainingReservedAmount, u256.Zero)) {
-                const providerLiquidity = providerNode.amount;
+                const providerLiquidity: u256 = providerNode.amount.value;
 
                 if (providerLiquidity.isZero()) {
                     currentProviderId = providerNode.providerId;
@@ -1084,8 +1089,10 @@ export class OrderBook extends OP_NET {
                 // TODO: Implement logic to verify BTC transfer to provider
 
                 // Reduce provider's liquidity amount
-                providerNode.amount = SafeMath.sub(providerNode.amount, providerSupplyAmount);
-                providerNode.save(tick.tickId);
+                providerNode.amount.value = SafeMath.sub(
+                    providerNode.amount.value,
+                    providerSupplyAmount,
+                );
 
                 // Update remainingReservedAmount
                 remainingReservedAmount = SafeMath.sub(
