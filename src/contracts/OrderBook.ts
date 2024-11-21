@@ -996,7 +996,6 @@ export class OrderBook extends OP_NET {
         }
 
         // Fulfill the reservation
-        const startingProviders = reservation.startingProviders;
         for (let i = 0; i < levels.length; i++) {
             const level = levels[i];
 
@@ -1013,16 +1012,11 @@ export class OrderBook extends OP_NET {
             }
 
             // Call fulfillReservation
-            const acquired: u256 = reservation.fulfillReservation(
+            totalTokensAcquired = reservation.fulfillReservation(
                 tick,
-                tokenInDecimals,
-                startingProviders.get(tickId),
+                tokenInDecimals
             );
-
-            totalTokensAcquired = SafeMath.add(totalTokensAcquired, acquired);
         }
-
-        // TODO: Implement logic to calculate totalBtcRequired based on the ticks and prices
 
         if (totalTokensAcquired.isZero()) {
             throw new Revert('ORDER_BOOK: No tokens acquired.');

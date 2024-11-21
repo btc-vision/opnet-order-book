@@ -1,4 +1,10 @@
-import { Blockchain, BytesWriter, Revert, SafeMath, StoredU256 } from '@btc-vision/btc-runtime/runtime';
+import {
+    Blockchain,
+    BytesWriter,
+    Revert,
+    SafeMath,
+    StoredU256,
+} from '@btc-vision/btc-runtime/runtime';
 import { u256 } from 'as-bignum/assembly';
 import { StoredMapU256 } from '../stored/StoredMapU256';
 import {
@@ -94,7 +100,6 @@ export class Tick {
 
             // Set next
             const previousProvider = new Provider(this.liquidityProviderLast.value, this.tickId);
-
             previousProvider.nextProviderId.value = providerId;
         }
 
@@ -214,7 +219,6 @@ export class Tick {
 
         let amountToReserve: u256 = amount;
 
-        let isFirstProvider: boolean = true;
         let providerNode = this.getNextLiquidityProvider(u256.Zero);
         while (providerNode && !u256.eq(amountToReserve, u256.Zero)) {
             const availableProviderLiquidity = SafeMath.sub(
@@ -259,12 +263,7 @@ export class Tick {
                 this.reservedAmount = SafeMath.add(this.reservedAmount, reserveAmount);
 
                 // Update reservation
-                reservation.addProviderReservation(providerNode, reserveAmount);
-
-                if (isFirstProvider) {
-                    reservation.setReservationStartingTick(this.tickId, providerNode.providerId);
-                    isFirstProvider = false;
-                }
+                reservation.addProviderReservation(providerNode, reserveAmount, this.tickId);
 
                 // Decrease remaining amount to reserve
                 amountToReserve = SafeMath.sub(amountToReserve, reserveAmount);
