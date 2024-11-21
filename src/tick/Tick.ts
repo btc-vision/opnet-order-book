@@ -1,10 +1,4 @@
-import {
-    Blockchain,
-    BytesWriter,
-    Revert,
-    SafeMath,
-    StoredU256,
-} from '@btc-vision/btc-runtime/runtime';
+import { Blockchain, BytesWriter, Revert, SafeMath, StoredU256 } from '@btc-vision/btc-runtime/runtime';
 import { u256 } from 'as-bignum/assembly';
 import { StoredMapU256 } from '../stored/StoredMapU256';
 import {
@@ -306,10 +300,6 @@ export class Tick {
         if (u256.lt(provider.amount.value, consumed)) {
             throw new Revert('Not enough liquidity left to consume');
         }
-
-        //Blockchain.log(
-        //    `Consuming ${consumed} tokens from provider ${provider.providerId} - ${provider.amount.value} remaining - ${provider.reservedAmount.value} reserved - ${this.liquidityAmount} total liquidity`,
-        //);
 
         this.removeReservationForProvider(provider, reserved);
 
