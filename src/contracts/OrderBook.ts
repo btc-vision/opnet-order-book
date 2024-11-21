@@ -891,7 +891,7 @@ export class OrderBook extends OP_NET {
                     providerLiquidity,
                     tick.tickId,
                     tick.level,
-                    tick.liquidityAmount, // Remaining liquidity after removal
+                    tick.getTotalLiquidity(), // Remaining liquidity after removal
                 ),
             );
         }
@@ -1001,16 +1001,26 @@ export class OrderBook extends OP_NET {
             const level = levels[i];
 
             const tickId = this.generateTickId(token, level);
-            const liquidityPointer = TickBitmap.getStoragePointer(token, tickId.toU64());
-            const tick = new Tick(tickId, u256.Zero, liquidityPointer);
+            const parsedLevel: u64 = this.calculateTickLevel(level).toU64();
+            const liquidityPointer = TickBitmap.getStoragePointer(token, parsedLevel);
+            const tick = new Tick(tickId, level, liquidityPointer);
             tick.load();
 
-            // Call fulfillReservation
-            reservation.fulfillReservation(tick, tokenInDecimals, startingProviders.get(tickId));
-        }
+            if (tick.getTotalLiquidity().isZero()) {
+                throw new Revert(
+                    `ORDER_BOOK: Insufficient liquidity to fulfill swap at level ${level}`,
+                );
+            }
 
-        // Calculate totalTokensAcquired and totalBtcRequired
-        totalTokensAcquired = reservation.totalReserved;
+            // Call fulfillReservation
+            const acquired: u256 = reservation.fulfillReservation(
+                tick,
+                tokenInDecimals,
+                startingProviders.get(tickId),
+            );
+
+            totalTokensAcquired = SafeMath.add(totalTokensAcquired, acquired);
+        }
 
         // TODO: Implement logic to calculate totalBtcRequired based on the ticks and prices
 

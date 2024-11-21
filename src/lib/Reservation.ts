@@ -68,6 +68,12 @@ export class Reservation {
         this.numProviders = storageNumProviders.value;
     }
 
+    public get createdAt(): u256 {
+        return u256.gt(this.expirationBlock, RESERVATION_DURATION)
+            ? SafeMath.sub(this.expirationBlock, RESERVATION_DURATION)
+            : u256.Zero;
+    }
+
     /**
      * Checks if the reservation exists in storage.
      */
@@ -118,8 +124,10 @@ export class Reservation {
         this.providers.set(provider.subPointer, SafeMath.add(providerAmount, amount));
     }
 
-    public fulfillReservation(tick: Tick, tokenDecimals: u256, startingProvider: u256): void {
+    public fulfillReservation(tick: Tick, tokenDecimals: u256, startingProvider: u256): u256 {
         this.load();
+
+        let acquired: u256 = u256.Zero;
 
         let foundStartingProvider: bool = false;
         for (let i = u256.Zero; u256.lt(i, this.numProviders); i = SafeMath.add(i, u256.One)) {
@@ -135,37 +143,43 @@ export class Reservation {
             }
 
             const provider = new Provider(providerId, tick.tickId);
-            const reservedAmount = this.providers.get(provider.subPointer);
+            const reservedAmount: u256 = this.providers.get(provider.subPointer);
             if (reservedAmount.isZero()) {
                 continue;
             }
 
+            // TODO: Check UTXOs.
+            const consumed: u256 = reservedAmount;
+            acquired = SafeMath.add(acquired, consumed);
+
             // Process the fulfillment (e.g., transfer tokens, update balances)
             tick.consumeLiquidity(
                 provider,
-                reservedAmount, // Consumed amount
+                consumed, // Consumed amount
                 reservedAmount, // Reserved amount
                 tokenDecimals, // Assuming tokenDecimals is 10^8
-                this.expirationBlock,
+                this.createdAt,
             );
 
             // Remove the reservation for this provider
             this.removeProviderReservation(provider);
-            tick.removeReservationForProvider(provider, reservedAmount);
+            //tick.removeReservationForProvider(provider, reservedAmount);
 
             // Emit TickUpdatedEvent for each tick
             const tickUpdatedEvent = new TickUpdatedEvent(
                 tick.tickId,
                 tick.level,
-                tick.liquidityAmount,
+                tick.getTotalLiquidity(),
                 reservedAmount,
             );
-            
+
             Blockchain.emit(tickUpdatedEvent);
         }
 
         // Clear the reservation
         this.delete();
+
+        return acquired;
     }
 
     public cancelReservation(tick: Tick): void {
@@ -225,7 +239,7 @@ export class Reservation {
         this.expirationBlock = this.storageExpirationBlock.get(this.reservationId) || u256.Zero;
         this.numProviders = this.storageNumProviders.value;
 
-        if (u256.eq(this.expirationBlock, Blockchain.block.number)) {
+        if (u256.eq(this.createdAt, Blockchain.block.number) && !this.expirationBlock.isZero()) {
             throw new Error('Reservation not active yet.');
         }
     }
@@ -234,6 +248,6 @@ export class Reservation {
      * Checks if the reservation has expired.
      */
     public hasExpired(): bool {
-        return u256.le(this.expirationBlock, Blockchain.block.number);
+        return u256.lt(this.expirationBlock, Blockchain.block.number);
     }
 }
