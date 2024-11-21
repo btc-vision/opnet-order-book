@@ -12,6 +12,7 @@ import {
 } from './StoredPointers';
 import { Provider } from './Provider';
 import { Tick } from '../tick/Tick';
+import { TickUpdatedEvent } from '../events/TickUpdatedEvent';
 
 /**
  * Reservation class representing a buyer's reservation.
@@ -56,12 +57,15 @@ export class Reservation {
 
         // Initialize providersList and numProviders
         this.providersList = new StoredMapU256(RESERVATION_PROVIDERS_LIST_POINTER, reservationId);
-        this.storageNumProviders = new StoredU256(
+        const storageNumProviders = new StoredU256(
             RESERVATION_NUM_PROVIDERS_POINTER,
             reservationId,
             u256.Zero,
         );
-        this.numProviders = this.storageNumProviders.value;
+
+        this.storageNumProviders = storageNumProviders;
+
+        this.numProviders = storageNumProviders.value;
     }
 
     /**
@@ -114,13 +118,23 @@ export class Reservation {
         this.providers.set(provider.subPointer, SafeMath.add(providerAmount, amount));
     }
 
-    public fulfillReservation(tick: Tick, tokenDecimals: u256): void {
+    public fulfillReservation(tick: Tick, tokenDecimals: u256, startingProvider: u256): void {
         this.load();
 
+        let foundStartingProvider: bool = false;
         for (let i = u256.Zero; u256.lt(i, this.numProviders); i = SafeMath.add(i, u256.One)) {
             const providerId = this.providersList.get(i);
-            const provider = new Provider(providerId, tick.tickId);
+            if (!foundStartingProvider && providerId == startingProvider) {
+                foundStartingProvider = true;
+                Blockchain.log(`[WOW] Found starting provider ${providerId}`);
+            } else {
+                Blockchain.log(
+                    `Skipping provider ${providerId} as it is not the starting provider`,
+                );
+                continue;
+            }
 
+            const provider = new Provider(providerId, tick.tickId);
             const reservedAmount = this.providers.get(provider.subPointer);
             if (reservedAmount.isZero()) {
                 continue;
@@ -137,7 +151,17 @@ export class Reservation {
 
             // Remove the reservation for this provider
             this.removeProviderReservation(provider);
-            tick.removeReservationForProvider(provider);
+            tick.removeReservationForProvider(provider, reservedAmount);
+
+            // Emit TickUpdatedEvent for each tick
+            const tickUpdatedEvent = new TickUpdatedEvent(
+                tick.tickId,
+                tick.level,
+                tick.liquidityAmount,
+                reservedAmount,
+            );
+            
+            Blockchain.emit(tickUpdatedEvent);
         }
 
         // Clear the reservation
@@ -148,17 +172,16 @@ export class Reservation {
         this.load();
 
         for (let i = u256.Zero; u256.lt(i, this.numProviders); i = SafeMath.add(i, u256.One)) {
-            const providerSubPointer = this.providersList.get(i);
-            const reservedAmount = this.providers.get(providerSubPointer);
+            const providerId = this.providersList.get(i);
+            const provider = new Provider(providerId, tick.tickId);
 
+            const reservedAmount = this.providers.get(provider.subPointer);
             if (reservedAmount.isZero()) {
                 continue;
             }
 
-            const provider = new Provider(providerSubPointer, tick.tickId);
-
             // Restore the reserved amount back to provider's available amount
-            tick.removeReservationForProvider(provider);
+            tick.removeReservationForProvider(provider, reservedAmount);
 
             // Remove the reservation for this provider
             this.removeProviderReservation(provider);
@@ -166,10 +189,6 @@ export class Reservation {
 
         // Clear the reservation
         this.delete();
-    }
-
-    public getProviderReservedAmount(provider: Provider): u256 {
-        return this.providers.get(provider.subPointer) || u256.Zero;
     }
 
     public removeProviderReservation(provider: Provider): void {

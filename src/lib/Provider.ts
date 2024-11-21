@@ -28,7 +28,7 @@ export class Provider {
 
         this._btcReceiver = new AdvancedStoredString(PROVIDER_ADDRESS_POINTER, providerId);
 
-        const subPointer: u256 = this.getSubPointer(tickId);
+        const subPointer: u256 = Provider.getSubPointer(tickId, providerId);
         this.subPointer = subPointer;
 
         this.amount = new StoredU256(LIQUIDITY_PROVIDER_AVAILABLE, subPointer, u256.Zero);
@@ -49,11 +49,11 @@ export class Provider {
         this._btcReceiver.value = value;
     }
 
-    private getSubPointer(tickId: u256): u256 {
+    private static getSubPointer(tickId: u256, providerId: u256): u256 {
         // Generate a unique storage pointer based on tickId and providerId
         const writer = new BytesWriter(64);
         writer.writeU256(tickId);
-        writer.writeU256(this.providerId);
+        writer.writeU256(providerId);
 
         return bytes32(sha256(writer.getBuffer()));
     }

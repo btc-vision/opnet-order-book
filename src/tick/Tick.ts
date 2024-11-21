@@ -47,13 +47,13 @@ export class Tick {
 
         this.liquidityProviderHead = new StoredU256(
             LIQUIDITY_PROVIDER_HEAD_POINTER,
-            this.tickId,
+            tickId,
             u256.Zero,
         );
 
         this.liquidityProviderLast = new StoredU256(
             LIQUIDITY_PROVIDER_LAST_POINTER,
-            this.tickId,
+            tickId,
             u256.Zero,
         );
 
@@ -186,9 +186,8 @@ export class Tick {
         return this.reservedAmount;
     }
 
-    public removeReservationForProvider(provider: Provider): void {
-        const reservedAmount: u256 = provider.reservedAmount.value;
-        provider.reservedAmount.value = u256.Zero;
+    public removeReservationForProvider(provider: Provider, reservedAmount: u256): void {
+        provider.reservedAmount.value = SafeMath.sub(provider.reservedAmount.value, reservedAmount);
 
         this.reservedAmount = SafeMath.sub(this.reservedAmount, reservedAmount);
     }
@@ -321,7 +320,8 @@ export class Tick {
         }
 
         if (!provider.reservedAmount.value.isZero()) {
-            this.removeReservationForProvider(provider);
+            provider.reservedAmount.value = SafeMath.sub(provider.reservedAmount.value, reserved);
+            this.reservedAmount = SafeMath.sub(this.reservedAmount, reserved);
         }
 
         const mapValues: StoredMapU256 = this.getReservedAmountAtBlockForProvider(expirationBlock);
