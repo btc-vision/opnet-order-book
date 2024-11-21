@@ -134,11 +134,11 @@ export class Reservation {
             const providerId = this.providersList.get(i);
             if (!foundStartingProvider && providerId == startingProvider) {
                 foundStartingProvider = true;
-                Blockchain.log(`[WOW] Found starting provider ${providerId}`);
+                //Blockchain.log(`[WOW] Found starting provider ${providerId}`);
             } else {
-                Blockchain.log(
-                    `Skipping provider ${providerId} as it is not the starting provider`,
-                );
+                //Blockchain.log(
+                //    `Skipping provider ${providerId} as it is not the starting provider`,
+                //);
                 continue;
             }
 

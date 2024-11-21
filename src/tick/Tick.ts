@@ -108,9 +108,9 @@ export class Tick {
      * @param provider
      */
     public removeLiquidity(provider: Provider): void {
-        Blockchain.log(
-            `[REMOVE] Removing provider ${provider.providerId} from tick ${this.tickId} - ${provider.amount.value} tokens`,
-        );
+        //Blockchain.log(
+        //    `[REMOVE] Removing provider ${provider.providerId} from tick ${this.tickId} - ${provider.amount.value} tokens`,
+        //);
 
         this.liquidityAmount = SafeMath.sub(this.liquidityAmount, provider.amount.value);
         this.saveLiquidityAmount();
@@ -308,9 +308,9 @@ export class Tick {
             throw new Revert('Not enough liquidity left to consume');
         }
 
-        Blockchain.log(
-            `Consuming ${consumed} tokens from provider ${provider.providerId} - ${provider.amount.value} remaining - ${provider.reservedAmount.value} reserved - ${this.liquidityAmount} total liquidity`,
-        );
+        //Blockchain.log(
+        //    `Consuming ${consumed} tokens from provider ${provider.providerId} - ${provider.amount.value} remaining - ${provider.reservedAmount.value} reserved - ${this.liquidityAmount} total liquidity`,
+        //);
 
         this.removeReservationForProvider(provider, reserved);
 
