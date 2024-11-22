@@ -109,6 +109,7 @@ export class Tick {
 
         this.liquidityProviderLast.value = providerId;
         this.liquidityAmount = SafeMath.add(this.liquidityAmount, amount);
+
         providerNode.save();
 
         this.saveLiquidityAmount();
@@ -226,7 +227,7 @@ export class Tick {
                 providerNode.amount,
                 providerNode.reservedAmount,
             );
-
+            
             if (!availableProviderLiquidity.isZero()) {
                 const satoshisValue: u128 = SafeMath.div128(
                     SafeMath.mul128(availableProviderLiquidity, this.level),
@@ -280,6 +281,9 @@ export class Tick {
                     mapProviders.set(count, providerNode.providerId);
 
                     countStoredU256.value = SafeMath.add(count, u256.One);
+                    Blockchain.log(
+                        `Adding reservation for provider ${providerNode.providerId} - ${countStoredU256.value}`,
+                    );
                 }
 
                 mapValues.set(providerNode.providerId, SafeMath.add(reservedAmount, reservedU256));

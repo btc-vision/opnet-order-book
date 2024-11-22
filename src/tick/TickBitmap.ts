@@ -66,7 +66,7 @@ export class TickBitmap {
      * @returns The unique tick ID as u256.
      */
     private generateTickId(token: Address, level: u128): u256 {
-        const data = new BytesWriter(ADDRESS_BYTE_LENGTH + 32);
+        const data = new BytesWriter(ADDRESS_BYTE_LENGTH + 16);
         data.writeAddress(token);
         data.writeU128(level);
 
