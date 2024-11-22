@@ -15,7 +15,7 @@ import {
     TransferHelper,
 } from '@btc-vision/btc-runtime/runtime';
 import { OP_NET } from '@btc-vision/btc-runtime/runtime/contracts/OP_NET';
-import { u256 } from 'as-bignum/assembly';
+import { u128, u256 } from 'as-bignum/assembly';
 import { StoredMapU256 } from '../stored/StoredMapU256';
 import { FEE_CREDITS_POINTER, LIQUIDITY_LIMITATION, TOTAL_RESERVES_POINTER } from '../lib/StoredPointers';
 import { sha256 } from '@btc-vision/btc-runtime/runtime/env/BlockchainEnvironment';
@@ -29,7 +29,7 @@ import { SwapExecutedEvent } from '../events/SwapExecutedEvent';
 import { TickBitmap } from '../tick/TickBitmap';
 import { LiquidityReserved } from '../events/LiquidityReserved';
 import { FEE_COLLECT_SCRIPT_PUBKEY } from '../utils/OrderBookUtils';
-import { Provider } from '../lib/Provider';
+import { getProvider, Provider } from '../lib/Provider';
 
 /**
  * OrderBook contract for the OP_NET order book system.
@@ -39,7 +39,7 @@ export class OrderBook extends OP_NET {
     private readonly lowerTickSpacing: u32 = 10; // The minimum spacing between each tick in satoshis.
 
     private readonly minimumTradeSize: u256 = u256.fromU32(10_000); // The minimum trade size in satoshis.
-    private readonly minimumAddLiquidityAmount: u256 = u256.fromU32(10); // At least 10 tokens.
+    private readonly minimumAddLiquidityAmount: u128 = u128.fromU32(10); // At least 10 tokens.
     private readonly minimumLiquidityForTickReservation: u256 = u256.fromU32(1_000_000); // The minimum liquidity for a tick reservation.
 
     private readonly maxTickConsumptionPercentagePerUser: u16 = 2500; // The maximum tick consumption percentage per user. 2500 = 25%
@@ -138,10 +138,10 @@ export class OrderBook extends OP_NET {
      * @param level - The price level as u256.
      * @returns The unique tick ID as u256.
      */
-    private generateTickId(token: Address, level: u256): u256 {
-        const data = new BytesWriter(ADDRESS_BYTE_LENGTH + 32);
+    private generateTickId(token: Address, level: u128): u256 {
+        const data = new BytesWriter(ADDRESS_BYTE_LENGTH + 16);
         data.writeAddress(token);
-        data.writeU256(level);
+        data.writeU128(level);
 
         return u256.fromBytes(sha256(data.getBuffer()));
     }
@@ -162,14 +162,14 @@ export class OrderBook extends OP_NET {
 
     /**
      * Calculates the tick level based on the given price level and tick spacing.
-     * @param priceLevel - The price level as u256.
-     * @returns The calculated tick level as u256.
+     * @param priceLevel - The price level as u128.
+     * @returns The calculated tick level as u128.
      */
-    private calculateTickLevel(priceLevel: u256): u256 {
-        const tickSpacing = u256.fromU32(this.lowerTickSpacing);
-        const divided = SafeMath.div(priceLevel, tickSpacing);
+    private calculateTickLevel(priceLevel: u128): u128 {
+        const tickSpacing = u128.fromU32(this.lowerTickSpacing);
+        const divided = SafeMath.div128(priceLevel, tickSpacing);
 
-        return SafeMath.mul(divided, tickSpacing);
+        return SafeMath.mul128(divided, tickSpacing);
     }
 
     /**
@@ -200,8 +200,8 @@ export class OrderBook extends OP_NET {
             throw new Revert('Invalid receiver address');
         }
 
-        const maximumAmountIn: u256 = calldata.readU256();
-        const targetPriceLevel: u256 = calldata.readU256();
+        const maximumAmountIn: u128 = calldata.readU128();
+        const targetPriceLevel: u128 = calldata.readU128();
 
         return this._addLiquidity(token, receiver, maximumAmountIn, targetPriceLevel);
     }
@@ -232,7 +232,7 @@ export class OrderBook extends OP_NET {
 
     private removeLiquidity(calldata: Calldata): BytesWriter {
         const token: Address = calldata.readAddress();
-        const tickPositions: u256[] = calldata.readTuple();
+        const tickPositions: u128[] = calldata.readU128Array();
 
         return this._removeLiquidity(token, tickPositions);
     }
@@ -240,7 +240,7 @@ export class OrderBook extends OP_NET {
     private swap(calldata: Calldata): BytesWriter {
         const token: Address = calldata.readAddress();
         const isSimulation: bool = calldata.readBoolean();
-        const levels: u256[] = calldata.readTuple();
+        const levels: u128[] = calldata.readU128Array();
 
         return this._swap(token, isSimulation, levels);
     }
@@ -253,9 +253,9 @@ export class OrderBook extends OP_NET {
 
     private getReserveForTick(calldata: Calldata): BytesWriter {
         const token: Address = calldata.readAddress();
-        const rawLevel: u256 = calldata.readU256();
+        const rawLevel: u128 = calldata.readU128();
 
-        const level: u256 = this.calculateTickLevel(rawLevel);
+        const level: u128 = this.calculateTickLevel(rawLevel);
 
         return this._getReserveForTick(token, level);
     }
@@ -264,10 +264,10 @@ export class OrderBook extends OP_NET {
      * @function _getReserve
      * @description Get the total reserve for a given token at a specific price level.
      * @param {Address} token - The token address
-     * @param {u256} level - The price level
+     * @param {u128} level - The price level
      * @private
      */
-    private _getReserveForTick(token: Address, level: u256): BytesWriter {
+    private _getReserveForTick(token: Address, level: u128): BytesWriter {
         const parsedLevel: u64 = this.calculateTickLevel(level).toU64();
         const liquidityPointer: u256 = TickBitmap.getStoragePointer(token, parsedLevel);
 
@@ -282,7 +282,7 @@ export class OrderBook extends OP_NET {
 
         const tickId = this.generateTickId(token, level);
         const tick = new Tick(tickId, level, liquidityPointer);
-        if (!tick.load()) {
+        if (!tick.hasLiquidity()) {
             throw new Revert('Tick not found');
         }
 
@@ -335,8 +335,8 @@ export class OrderBook extends OP_NET {
     private _addLiquidity(
         token: Address,
         receiver: string,
-        maximumAmountIn: u256,
-        targetPriceLevel: u256,
+        maximumAmountIn: u128,
+        targetPriceLevel: u128,
     ): BytesWriter {
         // Validate inputs
         if (token.empty() || token.equals(Blockchain.DEAD_ADDRESS)) {
@@ -352,49 +352,44 @@ export class OrderBook extends OP_NET {
         }
 
         // Verify that the price is minimum the tickSpacing
-        if (u256.lt(targetPriceLevel, u256.fromU32(this.lowerTickSpacing))) {
+        if (u128.lt(targetPriceLevel, u128.fromU32(this.lowerTickSpacing))) {
             throw new Revert(
                 `Price level is less than the tick spacing of ${this.lowerTickSpacing}, ${targetPriceLevel} is invalid`,
             );
         }
 
-        if (u256.lt(maximumAmountIn, this.minimumAddLiquidityAmount)) {
+        if (u128.lt(maximumAmountIn, this.minimumAddLiquidityAmount)) {
             throw new Revert('Amount in is less than the minimum add liquidity amount');
         }
 
         // Provider identifier as u256 derived from sender's address
         const providerId: u256 = this.u256FromAddress(Blockchain.tx.sender);
 
-        const level: u256 = this.calculateTickLevel(targetPriceLevel);
+        const level: u128 = this.calculateTickLevel(targetPriceLevel);
         const tickId: u256 = this.generateTickId(token, level);
         const liquidityPointer: u256 = TickBitmap.getStoragePointer(token, level.toU64());
 
         // Retrieve or create the tick
         const tick: Tick = new Tick(tickId, level, liquidityPointer);
+        const amountIn: u256 = maximumAmountIn.toU256();
 
         // Transfer tokens from provider to contract
         TransferHelper.safeTransferFrom(
             token,
             Blockchain.tx.sender,
             Blockchain.contractAddress,
-            maximumAmountIn,
+            amountIn,
         );
 
         // Update tick liquidity
-        tick.addLiquidity(providerId, maximumAmountIn, receiver);
+        tick.addLiquidity(providerId, amountIn, receiver);
 
         // Update total reserve
         const tokenUint = this.u256FromAddress(token);
-        this.updateTotalReserve(tokenUint, maximumAmountIn, true);
+        this.updateTotalReserve(tokenUint, amountIn, true);
 
         // Emit LiquidityAdded event
-        const liquidityEvent = new LiquidityAddedEvent(
-            tickId,
-            level,
-            maximumAmountIn,
-            maximumAmountIn, // amountOut is the same as amountIn for simplicity
-            receiver,
-        );
+        const liquidityEvent = new LiquidityAddedEvent(tickId, level, amountIn, receiver);
 
         this.emitEvent(liquidityEvent);
 
@@ -521,10 +516,10 @@ export class OrderBook extends OP_NET {
             throw new Revert('ORDER_BOOK: Minimum amount out with slippage cannot be zero');
         }
 
-        const tokenDecimals: u256 = SafeMath.pow(
+        const tokenDecimals: u128 = SafeMath.pow(
             u256.fromU32(10),
             u256.fromU32(<u32>this.getDecimals(token)),
-        );
+        ).toU128();
 
         const buyer: Address = Blockchain.tx.sender;
         const reservationId: u256 = this.generateReservationId(buyer, token);
@@ -571,7 +566,7 @@ export class OrderBook extends OP_NET {
             level = tick.level.toU64();
 
             // Load the tick
-            if (!tick.load()) {
+            if (!tick.hasLiquidity()) {
                 throw new Revert('Tick not found');
             }
 
@@ -593,11 +588,11 @@ export class OrderBook extends OP_NET {
                 break;
             }
 
-            const price: u256 = tick.level; // satoshis per token
+            const price: u256 = tick.level.toU256(); // satoshis per token
 
             // Calculate tokens that can be bought at this tick
             const tokensAtTick = SafeMath.div(
-                SafeMath.mul(remainingSatoshis, tokenDecimals),
+                SafeMath.mul(remainingSatoshis, tokenDecimals.toU256()),
                 price,
             );
 
@@ -616,12 +611,12 @@ export class OrderBook extends OP_NET {
                 continue;
             }
 
-            reservation.addReservation(tokensToReserve);
+            //reservation.addReservation(tokensToReserve);
 
             // Calculate satoshis used for this tick
             const satoshisUsed: u256 = SafeMath.div(
                 SafeMath.mul(tokensToReserve, price),
-                tokenDecimals,
+                tokenDecimals.toU256(),
             );
 
             // Update accumulators
@@ -693,10 +688,10 @@ export class OrderBook extends OP_NET {
             throw new Revert('Requested amount is below minimum trade size');
         }
 
-        const tokenDecimals: u256 = SafeMath.pow(
+        const tokenDecimals: u128 = SafeMath.pow(
             u256.fromU32(10),
             u256.fromU32(<u32>this.getDecimals(token)),
-        );
+        ).toU128();
 
         // Initialize variables for remaining satoshis and estimated tokens
         let remainingSatoshis = satoshisIn;
@@ -726,7 +721,7 @@ export class OrderBook extends OP_NET {
             level = tick.level.toU64();
 
             // Load the tick
-            if (!tick.load()) {
+            if (!tick.hasLiquidity()) {
                 throw new Revert('Tick not found');
             }
 
@@ -739,15 +734,15 @@ export class OrderBook extends OP_NET {
                 continue;
             }
 
-            const price: u256 = tick.level; // satoshis per token
+            const price: u256 = tick.level.toU256(); // satoshis per token
 
             // Calculate tokens that can be bought at this tick
             const tokensAtTick = SafeMath.div(
-                SafeMath.mul(remainingSatoshis, tokenDecimals),
+                SafeMath.mul(remainingSatoshis, tokenDecimals.toU256()),
                 price,
             );
 
-            if (u256.lt(tokensAtTick, Tick.MINIMUM_VALUE_POSITION)) {
+            if (u256.lt(tokensAtTick, Tick.MINIMUM_VALUE_POSITION.toU256())) {
                 continue;
             }
 
@@ -760,7 +755,7 @@ export class OrderBook extends OP_NET {
                 // Calculate satoshis used to buy tokensToBuy
                 const satoshisUsed: u256 = SafeMath.div(
                     SafeMath.mul(tokensToBuy, price),
-                    tokenDecimals,
+                    tokenDecimals.toU256(),
                 );
 
                 // Update accumulators
@@ -835,7 +830,7 @@ export class OrderBook extends OP_NET {
      * @throws {Error} If the token address is invalid or if the removal of liquidity fails.
      * @throws {Error} If the user does not have enough liquidity to remove.
      */
-    private _removeLiquidity(token: Address, tickPositions: u256[]): BytesWriter {
+    private _removeLiquidity(token: Address, tickPositions: u128[]): BytesWriter {
         // Validate input
         if (token.empty() || token.equals(Blockchain.DEAD_ADDRESS)) {
             throw new Revert('Invalid token address');
@@ -855,17 +850,17 @@ export class OrderBook extends OP_NET {
             const tick = new Tick(tickId, level, liquidityPointer);
 
             // Check if tick is valid and load it
-            if (!tick.load()) {
+            if (!tick.hasLiquidity()) {
                 continue; // Skip if tick does not exist
             }
 
-            const provider: Provider = new Provider(providerId, tickId);
-            const providerLiquidity: u256 = provider.amount.value;
+            const provider: Provider = getProvider(providerId, tickId);
+            const providerLiquidity: u256 = provider.amount.toU256();
             if (providerLiquidity.isZero()) {
                 continue; // Provider has no liquidity in this tick
             }
 
-            const reservedAmount: u256 = provider.reservedAmount.value;
+            const reservedAmount: u256 = provider.reservedAmount.toU256();
 
             // Check if there are active reservations that prevent liquidity removal
             if (!reservedAmount.isZero()) {
@@ -875,7 +870,7 @@ export class OrderBook extends OP_NET {
             }
 
             // Update total reserve
-            this.updateTotalReserve(tokenUint, providerLiquidity, false);
+            this.updateTotalReserve(tokenUint, reservedAmount, false);
 
             // Update tick by removing liquidity from provider
             tick.removeLiquidity(provider);
@@ -952,7 +947,7 @@ export class OrderBook extends OP_NET {
      * @throws {Error} If the reservation is close to be expired and the swap is a simulation.
      * @throws {Error} If the buyer does not have enough BTC to complete the swap.
      */
-    private _swap(token: Address, isSimulation: bool, levels: u256[]): BytesWriter {
+    private _swap(token: Address, isSimulation: bool, levels: u128[]): BytesWriter {
         // Validate inputs
         if (token.empty() || token.equals(Blockchain.DEAD_ADDRESS)) {
             throw new Revert('Invalid token address');
@@ -972,18 +967,18 @@ export class OrderBook extends OP_NET {
 
         // Load the reservation
         const reservation = new Reservation(reservationId);
-        if (!reservation.valid()) {
+        if (!reservation.exist()) {
             throw new Revert('ORDER_BOOK: Reservation not found');
         }
 
         // If isSimulation is true and reservation is close to being expired
         if (isSimulation) {
-            const blocksUntilExpiration = SafeMath.sub(
+            const blocksUntilExpiration: u64 = SafeMath.sub64(
                 reservation.expirationBlock,
-                Blockchain.block.number,
+                Blockchain.block.numberU64,
             );
 
-            if (u256.le(blocksUntilExpiration, u256.One)) {
+            if (blocksUntilExpiration <= 1) {
                 throw new Revert('Reservation is close to being expired');
             }
         }
@@ -995,6 +990,7 @@ export class OrderBook extends OP_NET {
             throw new Revert(`Reservation ${reservationId} has expired`);
         }
 
+        const ticks: Tick[] = [];
         // Fulfill the reservation
         for (let i = 0; i < levels.length; i++) {
             const level = levels[i];
@@ -1002,23 +998,18 @@ export class OrderBook extends OP_NET {
             const tickId = this.generateTickId(token, level);
             const parsedLevel: u64 = this.calculateTickLevel(level).toU64();
             const liquidityPointer = TickBitmap.getStoragePointer(token, parsedLevel);
+
             const tick = new Tick(tickId, level, liquidityPointer);
-            tick.load();
-
-            if (tick.getTotalLiquidity().isZero()) {
-                throw new Revert(
-                    `ORDER_BOOK: Insufficient liquidity to fulfill swap at level ${level}`,
-                );
-            }
-
-            // Call fulfillReservation
-            totalTokensAcquired = reservation.fulfillReservation(
-                tick,
-                tokenInDecimals
-            );
+            ticks.push(tick);
         }
 
+        // Somewhat efficient.
+        totalTokensAcquired = reservation.fulfillReservation(tokenInDecimals.toU128(), ticks);
+
         if (totalTokensAcquired.isZero()) {
+            // Delete if nothing acquired.
+            reservation.delete();
+
             throw new Revert('ORDER_BOOK: No tokens acquired.');
         }
 

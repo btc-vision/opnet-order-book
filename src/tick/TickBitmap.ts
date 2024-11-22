@@ -1,4 +1,4 @@
-import { u256 } from 'as-bignum/assembly';
+import { u128, u256 } from 'as-bignum/assembly';
 import {
     Address,
     ADDRESS_BYTE_LENGTH,
@@ -44,9 +44,13 @@ export class TickBitmap {
         );
 
         // mask 80 bits
-        // eslint-disable-next-line no-loss-of-precision
-        const value: u256 = SafeMath.and(nextStoragePointer, u256.fromU64(<u64>0xffffffffffffffff));
-        const tickId = this.generateTickId(this.token, value);
+        const value: u128 = SafeMath.and(
+            nextStoragePointer,
+            // eslint-disable-next-line no-loss-of-precision
+            u256.fromU64(<u64>0xffffffffffffffff),
+        ).toU128();
+
+        const tickId: u256 = this.generateTickId(this.token, value);
 
         if (nextStoragePointer.isZero()) {
             return null;
@@ -61,10 +65,10 @@ export class TickBitmap {
      * @param level - The price level as u256.
      * @returns The unique tick ID as u256.
      */
-    private generateTickId(token: Address, level: u256): u256 {
+    private generateTickId(token: Address, level: u128): u256 {
         const data = new BytesWriter(ADDRESS_BYTE_LENGTH + 32);
         data.writeAddress(token);
-        data.writeU256(level);
+        data.writeU128(level);
 
         return u256.fromBytes(sha256(data.getBuffer()));
     }
