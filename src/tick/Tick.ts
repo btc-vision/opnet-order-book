@@ -227,7 +227,7 @@ export class Tick {
                 providerNode.amount,
                 providerNode.reservedAmount,
             );
-            
+
             if (!availableProviderLiquidity.isZero()) {
                 const satoshisValue: u128 = SafeMath.div128(
                     SafeMath.mul128(availableProviderLiquidity, this.level),
@@ -281,9 +281,6 @@ export class Tick {
                     mapProviders.set(count, providerNode.providerId);
 
                     countStoredU256.value = SafeMath.add(count, u256.One);
-                    Blockchain.log(
-                        `Adding reservation for provider ${providerNode.providerId} - ${countStoredU256.value}`,
-                    );
                 }
 
                 mapValues.set(providerNode.providerId, SafeMath.add(reservedAmount, reservedU256));
@@ -319,7 +316,9 @@ export class Tick {
         createdAt: u64,
     ): void {
         if (u128.lt(provider.amount, consumed)) {
-            throw new Revert('Not enough liquidity left to consume');
+            throw new Revert(
+                `Not enough liquidity left to consume (want ${consumed}, have ${provider.amount})`,
+            );
         }
 
         this.removeReservationForProvider(provider, reserved);
@@ -456,10 +455,6 @@ export class Tick {
         // Initialize blockId to startBlock
         let blockId: u64 = startBlock;
 
-        Blockchain.log(
-            `Purging reservations for tick ${this.tickId} from block ${startBlock} to ${endBlock} - ${purgedCount < maxBlocksToPurge},`,
-        );
-
         // Loop to purge blocks from startBlock to endBlock, up to maxBlocksToPurge
         while (blockId < endBlock && purgedCount < maxBlocksToPurge) {
             this.purgeBlock(blockId);
@@ -469,7 +464,7 @@ export class Tick {
 
         // Update lastPurgeBlock to the last purged block
         if (purgedCount > 0) {
-            this.tickParameters.set(TICK_LAST_PURGE, SafeMath.sub64(blockId, 1));
+            this.tickParameters.set(TICK_LAST_PURGE, SafeMath.sub64(Blockchain.block.numberU64, 1));
 
             // TODO: Be more efficient with this call.
             this.tickParameters.save();
@@ -494,15 +489,11 @@ export class Tick {
         const mapProviders: StoredMapU256 = this.getProviderIdAtBlock(blockId);
         const mapValues: StoredMapU256 = this.getReservedAmountAtBlockForProvider(blockId);
 
-        Blockchain.log(`Purging ${count} reservations for tick ${this.tickId} at block ${blockId}`);
-
         for (let i: u32 = 0; i < count; i++) {
             const providerId: u256 = mapProviders.get(u256.fromU32(i));
             if (providerId.isZero()) {
                 throw new Revert('Provider ID is zero');
             }
-
-            Blockchain.log(`Purging reservation for provider ${providerId} at block ${blockId}`);
 
             const reservedTotalU256: u256 = mapValues.get(providerId);
             const provider = getProvider(providerId, this.tickId);

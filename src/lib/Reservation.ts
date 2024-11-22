@@ -99,13 +99,11 @@ export class Reservation {
                 throw new Revert('No providers at index');
             }
 
-            for (let i: u32 = 0; i < amountOfProvidersAtIndex; i++) {
-                const tick: Tick = ticks[this.currentProviderIndex - 1];
-                acquired = SafeMath.add(
-                    acquired,
-                    this.fulfillTick(tick, providerCounter, tokenDecimals),
-                );
-            }
+            const tick: Tick = ticks[this.currentProviderIndex - 1];
+            acquired = SafeMath.add(
+                acquired,
+                this.fulfillTick(tick, providerCounter, tokenDecimals),
+            );
 
             this.increaseCounterIndex();
 
@@ -192,8 +190,6 @@ export class Reservation {
 
             const consumed: u128 = reservedAmount;
             acquired = SafeMath.add(acquired, consumed.toU256());
-
-            //Blockchain.log(`Consuming.`);
 
             // Process the fulfillment
             tick.consumeLiquidity(provider, consumed, reservedAmount, decimals, this.createdAt);
