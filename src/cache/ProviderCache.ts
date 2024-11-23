@@ -41,3 +41,13 @@ export function insertProvider(newEntry: Entry): void {
     // Insert at position 'low'
     cachedProvidersArray[low] = newEntry;
 }
+
+/**
+ * @function saveAllProviders
+ * @description Saves all Providers in the cache.
+ */
+export function saveAllProviders(): void {
+    for (let i: i32 = 0; i < cachedProvidersArray.length; i++) {
+        cachedProvidersArray[i].provider.save();
+    }
+}

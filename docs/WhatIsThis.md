@@ -113,19 +113,3 @@ The contract tracks:
 
 Each time liquidity is added, removed, consumed, or reserved, we update the global variables accordingly to maintain an
 accurate state.
-
-### **Key Advantages of the EWMA-Based Mechanism**
-
-- **Efficiency**: Reduces computational overhead by avoiding extensive historical data storage.
-- **Security**: Mitigates manipulation risks by smoothing out sudden spikes in buy volume or liquidity.
-- **Responsiveness**: Adjusts prices dynamically based on recent market activity while maintaining stability.
-- **Fairness**: Ensures that token prices reflect genuine demand, benefiting both buyers and liquidity providers.
-
-### **Implementation Considerations**
-
-- **Smoothing Factor $\alpha$**: Determines the balance between responsiveness and smoothing; typical values might be
-  around 0.3.
-- **Scaling Constant $k$**: Controls price sensitivity; should be calibrated based on desired market responsiveness.
-- **Atomic Updates**: Ensure that updates to EWMA values and global states are performed atomically to maintain
-  consistency.
-- **Data Types**: Use `u256` for variables requiring high precision, especially in arithmetic operations.

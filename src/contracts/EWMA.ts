@@ -14,23 +14,21 @@ import {
 } from '@btc-vision/btc-runtime/runtime';
 import { OP_NET } from '@btc-vision/btc-runtime/runtime/contracts/OP_NET';
 import { u128, u256 } from 'as-bignum/assembly';
-import { StoredMapU256 } from '../stored/StoredMapU256';
-import { FEE_CREDITS_POINTER, LIQUIDITY_LIMITATION, TOTAL_RESERVES_POINTER } from '../lib/StoredPointers';
+import { FEE_CREDITS_POINTER, LIQUIDITY_LIMITATION } from '../lib/StoredPointers';
 import { FEE_COLLECT_SCRIPT_PUBKEY } from '../utils/OrderBookUtils';
+import { saveAllProviders } from '../cache/ProviderCache';
+import { LiquidityQueue } from '../lib/LiquidityQueue';
+import { ripemd160 } from '../../../btc-runtime/runtime/env/global';
 
 /**
  * OrderBook contract for the OP_NET order book system.
  */
 @final
-export class OrderBook extends OP_NET {
-    private readonly lowerTickSpacing: u32 = 10; // The minimum spacing between each tick in satoshis.
-
+export class EWMA extends OP_NET {
     private readonly minimumTradeSize: u256 = u256.fromU32(10_000); // The minimum trade size in satoshis.
     private readonly minimumAddLiquidityAmount: u128 = u128.fromU32(10); // At least 10 tokens.
-    private readonly minimumLiquidityForTickReservation: u256 = u256.fromU32(1_000_000); // The minimum liquidity for a tick reservation.
 
-    private readonly maxTickConsumptionPercentagePerUser: u16 = 2500; // The maximum tick consumption percentage per user. 2500 = 25%
-    private readonly fixedFeeRatePerTickConsumed: u256 = u256.fromU32(4_000); // The fixed fee rate per tick consumed.
+    private readonly reservationFeePerProvider: u256 = u256.fromU32(4_000); // The fixed fee rate per tick consumed.
 
     private readonly feeCredits: AddressMemoryMap<u256> = new AddressMemoryMap<u256>(
         FEE_CREDITS_POINTER,
@@ -42,13 +40,8 @@ export class OrderBook extends OP_NET {
         false,
     );
 
-    // Storage for total reserves
-    private totalReserves: StoredMapU256; // token address (as u256) => total reserve
-
     public constructor() {
         super();
-
-        this.totalReserves = new StoredMapU256(TOTAL_RESERVES_POINTER);
     }
 
     private static get DECIMAL_SELECTOR(): Selector {
@@ -59,10 +52,14 @@ export class OrderBook extends OP_NET {
         // Logic to run on deployment
     }
 
+    public override onExecutionCompleted(): void {
+        saveAllProviders();
+    }
+
     public override execute(method: Selector, calldata: Calldata): BytesWriter {
         switch (method) {
-            case encodeSelector('reserveTicks'):
-                return this.reserveTicks(calldata);
+            case encodeSelector('reserve'):
+                return this.reserve(calldata);
             case encodeSelector('addLiquidity'):
                 return this.addLiquidity(calldata);
             case encodeSelector('removeLiquidity'):
@@ -111,33 +108,6 @@ export class OrderBook extends OP_NET {
     }
 
     /**
-     * Calculates the tick level based on the given price level and tick spacing.
-     * @param priceLevel - The price level as u128.
-     * @returns The calculated tick level as u128.
-     */
-    private calculateTickLevel(priceLevel: u128): u128 {
-        const tickSpacing = u128.fromU32(this.lowerTickSpacing);
-        const divided = SafeMath.div128(priceLevel, tickSpacing);
-
-        return SafeMath.mul128(divided, tickSpacing);
-    }
-
-    /**
-     * Updates the total reserve for a given token.
-     * @param token - The token address as u256.
-     * @param amount - The amount to add or subtract.
-     * @param increase - Boolean indicating whether to add or subtract.
-     */
-    private updateTotalReserve(token: u256, amount: u256, increase: bool): void {
-        const currentReserve = this.totalReserves.get(token) || u256.Zero;
-        const newReserve = increase
-            ? SafeMath.add(currentReserve, amount)
-            : SafeMath.sub(currentReserve, amount);
-
-        this.totalReserves.set(token, newReserve);
-    }
-
-    /**
      * Adds liquidity to the order book.
      * @param calldata - The calldata containing parameters.
      * @returns A BytesWriter containing the success status.
@@ -150,10 +120,8 @@ export class OrderBook extends OP_NET {
             throw new Revert('Invalid receiver address');
         }
 
-        const maximumAmountIn: u128 = calldata.readU128();
-        const targetPriceLevel: u128 = calldata.readU128();
-
-        return this._addLiquidity(token, receiver, maximumAmountIn, targetPriceLevel);
+        const amountIn: u128 = calldata.readU128();
+        return this._addLiquidity(token, receiver, amountIn);
     }
 
     private getQuote(calldata: Calldata): BytesWriter {
@@ -163,20 +131,13 @@ export class OrderBook extends OP_NET {
         return this._getQuote(token, satoshisIn);
     }
 
-    private reserveTicks(calldata: Calldata): BytesWriter {
+    private reserve(calldata: Calldata): BytesWriter {
         const token: Address = calldata.readAddress();
         const maximumAmount: u256 = calldata.readU256();
         const minimumAmountOut: u256 = calldata.readU256();
-        const minimumLiquidityPerTick: u256 = calldata.readU256();
         const slippage: u16 = calldata.readU16();
 
-        return this._reserveTicks(
-            token,
-            maximumAmount,
-            minimumAmountOut,
-            minimumLiquidityPerTick,
-            slippage,
-        );
+        return this._reserve(token, maximumAmount, minimumAmountOut, slippage);
     }
 
     private removeLiquidity(calldata: Calldata): BytesWriter {
@@ -219,8 +180,7 @@ export class OrderBook extends OP_NET {
      *
      * @param {Address} token - The address of the token to which liquidity is being added.
      * @param {Address} receiver - The address to which the bitcoins will be sent.
-     * @param {u256} maximumAmountIn - The maximum amount of tokens to be added as liquidity.
-     * @param {u256} targetPriceLevel - The target price level at which the liquidity is being added.
+     * @param {u128} amountIn - The maximum amount of tokens to be added as liquidity.
      *
      * @returns {BytesWriter} -
      * Return true on success, revert on failure.
@@ -234,35 +194,25 @@ export class OrderBook extends OP_NET {
      * @throws {Error} If the token address is invalid or if the liquidity addition fails.
      * @throws {Error} If the user does not have enough tokens to add liquidity.
      */
-    private _addLiquidity(
-        token: Address,
-        receiver: string,
-        maximumAmountIn: u128,
-        targetPriceLevel: u128,
-    ): BytesWriter {
+    private _addLiquidity(token: Address, receiver: string, amountIn: u128): BytesWriter {
         // Validate inputs
         if (token.empty() || token.equals(Blockchain.DEAD_ADDRESS)) {
             throw new Revert('Invalid token address');
         }
 
-        if (maximumAmountIn.isZero()) {
+        if (amountIn.isZero()) {
             throw new Revert('Amount in cannot be zero');
         }
 
-        if (targetPriceLevel.isZero()) {
-            throw new Revert('Price level cannot be zero');
-        }
-
-        // Verify that the price is minimum the tickSpacing
-        if (u128.lt(targetPriceLevel, u128.fromU32(this.lowerTickSpacing))) {
-            throw new Revert(
-                `Price level is less than the tick spacing of ${this.lowerTickSpacing}, ${targetPriceLevel} is invalid`,
-            );
-        }
-
-        if (u128.lt(maximumAmountIn, this.minimumAddLiquidityAmount)) {
+        if (u128.lt(amountIn, this.minimumAddLiquidityAmount)) {
             throw new Revert('Amount in is less than the minimum add liquidity amount');
         }
+
+        const providerId = this.addressToPointerU256(Blockchain.tx.sender);
+        const tokenId = this.addressToPointer(token);
+
+        const queue = this.getLiquidityQueue(token, tokenId);
+        queue.addLiquidity(providerId, amountIn, receiver);
 
         // Provider identifier as u256 derived from sender's address
         /*const providerId: u256 = this.u256FromAddress(Blockchain.tx.sender);
@@ -301,16 +251,16 @@ export class OrderBook extends OP_NET {
         return result;
     }
 
-    private adjustAvailableLiquidityAtTick(liquidity: u256): u256 {
-        // Round down.
-        if (!this.liquidityLimitation.value) {
-            return liquidity;
-        }
+    private getLiquidityQueue(token: Address, tokenId: Uint8Array): LiquidityQueue {
+        return new LiquidityQueue(token, tokenId);
+    }
 
-        return SafeMath.div(
-            SafeMath.mul(liquidity, u256.fromU32(this.maxTickConsumptionPercentagePerUser)),
-            u256.fromU32(10000),
-        );
+    private addressToPointerU256(address: Address): u256 {
+        return u256.fromBytes(address, true);
+    }
+
+    private addressToPointer(address: Address): Uint8Array {
+        return ripemd160(address);
     }
 
     /** Get total fees collected */
@@ -337,7 +287,7 @@ export class OrderBook extends OP_NET {
     }
 
     /**
-     * @function reserveTicks
+     * @function _reserve
      * @description
      * Reserves ticks (price positions) in the OP_NET order book system, similar to how Uniswap v4 handles liquidity ticks.
      * The OP_NET system allows users to reserve specific price levels for tokens being traded, with BTC as the input currency.
@@ -353,7 +303,6 @@ export class OrderBook extends OP_NET {
      * @param {Address} token - The token address for which the ticks are being reserved.
      * @param {u256} maximumAmountIn - The quantity of satoshis to be traded for the specified token.
      * @param {u256} minimumAmountOut - The minimum amount of tokens to receive for the trade.
-     * @param minimumLiquidityPerTick
      * @param {u16} slippage - The maximum slippage percentage allowed for the trade. Note that this is a percentage value. (10000 = 100%)
      *
      * @returns {BytesWriter} -
@@ -376,11 +325,10 @@ export class OrderBook extends OP_NET {
      * @throws {Error} If the requested quantity is less than the minimum trade size.
      * @throws {Error} If the user already has a pending reservation for the same token.
      */
-    private _reserveTicks(
+    private _reserve(
         token: Address,
         maximumAmountIn: u256,
         minimumAmountOut: u256,
-        minimumLiquidityPerTick: u256,
         slippage: u16,
     ): BytesWriter {
         // Validate inputs
@@ -653,7 +601,7 @@ export class OrderBook extends OP_NET {
 
     private getDecimals(token: Address): u8 {
         const calldata = new BytesWriter(4);
-        calldata.writeSelector(OrderBook.DECIMAL_SELECTOR);
+        calldata.writeSelector(EWMA.DECIMAL_SELECTOR);
 
         const response = Blockchain.call(token, calldata);
         return response.readU8();
