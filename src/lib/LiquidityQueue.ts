@@ -159,9 +159,6 @@ export class LiquidityQueue {
 
     public reserveLiquidity(buyer: Address, maximumAmount: u256): u256 {
         const currentPrice: u256 = this.quote();
-
-        Blockchain.log(`currentPrice: ${currentPrice.toString()}`);
-
         const tokensOut: u256 = this.estimateOutputTokens(maximumAmount, currentPrice);
 
         let tokensReserved: u256 = u256.Zero;
