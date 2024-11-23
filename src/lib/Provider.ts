@@ -64,7 +64,6 @@ export class Provider {
 
     public save(): void {
         this.userLiquidity.save();
-        this.loaderReceiver.save();
     }
 }
 

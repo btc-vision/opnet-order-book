@@ -19,6 +19,9 @@ import { FEE_COLLECT_SCRIPT_PUBKEY } from '../utils/OrderBookUtils';
 import { saveAllProviders } from '../cache/ProviderCache';
 import { LiquidityQueue } from '../lib/LiquidityQueue';
 import { ripemd160 } from '../../../btc-runtime/runtime/env/global';
+import { quoter, Quoter } from '../math/Quoter';
+
+const TWO: u256 = u256.fromU32(2);
 
 /**
  * OrderBook contract for the OP_NET order book system.
@@ -48,6 +51,10 @@ export class EWMA extends OP_NET {
         return encodeSelector('decimals');
     }
 
+    private static get OWNER_SELECTOR(): Selector {
+        return encodeSelector('owner');
+    }
+
     public override onDeployment(_calldata: Calldata): void {
         // Logic to run on deployment
     }
@@ -74,6 +81,8 @@ export class EWMA extends OP_NET {
                 return this.creditsOf(calldata);
             case encodeSelector('limit'):
                 return this.limit(calldata);
+            case encodeSelector('setQuote'): // aka enable trading
+                return this.setQuote(calldata);
             default:
                 return super.execute(method, calldata);
         }
@@ -103,6 +112,29 @@ export class EWMA extends OP_NET {
 
         const writer = new BytesWriter(1);
         writer.writeBoolean(this.liquidityLimitation.value);
+
+        return writer;
+    }
+
+    private setQuote(calldata: Calldata): BytesWriter {
+        const token: Address = calldata.readAddress();
+        const quote: u256 = calldata.readU256();
+
+        const tokenOwner = this.getOwner(token);
+        if (Blockchain.tx.origin.equals(tokenOwner) == false) {
+            throw new Revert('Only token owner can set quote');
+        }
+
+        const queue = this.getLiquidityQueue(token, this.addressToPointer(token));
+        if (!queue.p0.isZero()) {
+            throw new Revert('Base quote already set');
+        }
+
+        queue.p0 = quote;
+        queue.save();
+
+        const writer = new BytesWriter(1);
+        writer.writeBoolean(true);
 
         return writer;
     }
@@ -213,37 +245,7 @@ export class EWMA extends OP_NET {
 
         const queue = this.getLiquidityQueue(token, tokenId);
         queue.addLiquidity(providerId, amountIn, receiver);
-
-        // Provider identifier as u256 derived from sender's address
-        /*const providerId: u256 = this.u256FromAddress(Blockchain.tx.sender);
-
-        const level: u128 = this.calculateTickLevel(targetPriceLevel);
-        const tickId: u256 = this.generateTickId(token, level);
-        const liquidityPointer: u256 = TickBitmap.getStoragePointer(token, level.toU64());
-
-        // Retrieve or create the tick
-        const tick: Tick = new Tick(tickId, level, liquidityPointer);
-        const amountIn: u256 = maximumAmountIn.toU256();
-
-        // Transfer tokens from provider to contract
-        TransferHelper.safeTransferFrom(
-            token,
-            Blockchain.tx.sender,
-            Blockchain.contractAddress,
-            amountIn,
-        );
-
-        // Update tick liquidity
-        tick.addLiquidity(providerId, amountIn, receiver);
-
-        // Update total reserve
-        const tokenUint = this.u256FromAddress(token);
-        this.updateTotalReserve(tokenUint, amountIn, true);
-
-        // Emit LiquidityAdded event
-        const liquidityEvent = new LiquidityAddedEvent(tickId, level, amountIn, receiver);
-
-        this.emitEvent(liquidityEvent);*/
+        queue.save();
 
         // Return success
         const result = new BytesWriter(1);
@@ -362,25 +364,13 @@ export class EWMA extends OP_NET {
             throw new Revert('ORDER_BOOK: Minimum amount out with slippage cannot be zero');
         }
 
-        const tokenDecimals: u128 = SafeMath.pow(
-            u256.fromU32(10),
-            u256.fromU32(<u32>this.getDecimals(token)),
-        ).toU128();
-
         const buyer: Address = Blockchain.tx.sender;
-
-        // Create the reservation
-
-        /*const reservationEvent = new ReservationCreatedEvent(
-            reservationId,
-            expectedAmountOut,
-            buyer,
-        );
-
-        this.emitEvent(reservationEvent);*/
+        const queue = this.getLiquidityQueue(token, this.addressToPointer(token));
+        const reserved = queue.reserveLiquidity(buyer, maximumAmountIn);
+        queue.save();
 
         const result = new BytesWriter(32);
-        //result.writeU256(reservationId);
+        result.writeU256(reserved);
         return result;
     }
 
@@ -388,22 +378,23 @@ export class EWMA extends OP_NET {
      * @function _getQuote
      * @description
      * Retrieves a quote for a specified bitcoin amount to be traded for a given token.
-     * This method allows users to get an estimate of the number of tokens they can buy for a specified amount of BTC.
+     * This method simulates EWMA decay based on the number of blocks elapsed since the last update,
+     * providing an accurate estimate of the number of tokens that can be bought for a specified amount of BTC.
      *
      * @param {Address} token - The unique identifier of the token for which the quote is requested.
      * @param {u256} satoshisIn - The quantity of satoshis to be traded for the specified token. Minimum value is 1000 satoshis.
      *
-     * @param minimumLiquidityPerTick
      * @returns {BytesWriter} -
-     * This method must return a receipt containing the following fields:
+     * This method returns a receipt containing the following fields:
      * - estimatedQuantity (u256): The number of tokens that can be bought for the specified quantity at the given price point.
+     * - requiredSatoshis (u256): The amount of satoshis required to achieve the estimated quantity.
      *
-     * @throws {Error} If the token is not found in the order book.
-     * @throws {Error} If the requested quantity exceeds available liquidity in the order book.
-     * @throws {Error} If invalid parameters are provided (e.g., negative quantity, zero price).
-     * @throws {Error} If the requested quantity is less than the minimum trade size.
+     * @throws {Revert} If the token is not found in the order book.
+     * @throws {Revert} If the requested quantity exceeds available liquidity in the order book.
+     * @throws {Revert} If invalid parameters are provided (e.g., negative quantity, zero price).
+     * @throws {Revert} If the requested quantity is less than the minimum trade size.
      */
-    private _getQuote(token: Address, satoshisIn: u256): BytesWriter {
+    private _getQuote(token: Address, satoshisIn: u256, simulateDecay: bool = true): BytesWriter {
         // Validate inputs
         if (token.empty() || token.equals(Blockchain.DEAD_ADDRESS)) {
             throw new Revert('Invalid token address');
@@ -413,28 +404,139 @@ export class EWMA extends OP_NET {
             throw new Revert('Requested amount is below minimum trade size');
         }
 
-        const tokenDecimals: u128 = SafeMath.pow(
-            u256.fromU32(10),
-            u256.fromU32(<u32>this.getDecimals(token)),
-        ).toU128();
+        // Retrieve the liquidity queue for the token
+        const queue: LiquidityQueue = this.getLiquidityQueue(token, this.addressToPointer(token));
 
-        // Initialize variables for remaining satoshis and estimated tokens
-        const remainingSatoshis = satoshisIn;
-        const estimatedQuantity = u256.Zero;
-        const requiredSatoshis = u256.Zero;
+        let currentEWMA_V: u256;
+        let currentEWMA_L: u256;
 
-        // Get the tick bitmap for the token
+        if (simulateDecay) {
+            // Simulate decay of EWMA values
+            // Retrieve current EWMA values and last update block numbers
+            const lastUpdateBlock_V: u64 = queue.lastUpdateBlockEWMA_V;
+            const lastUpdateBlock_L: u64 = queue.lastUpdateBlockEWMA_L;
+            const currentBlock: u64 = Blockchain.block.numberU64;
 
-        if (estimatedQuantity.isZero()) {
-            throw new Revert('ORDER_BOOK: Insufficient liquidity to provide a quote');
+            // Calculate blocks elapsed since last EWMA_V and EWMA_L updates
+            const blocksElapsed_V: u64 = SafeMath.sub64(currentBlock, lastUpdateBlock_V);
+            const blocksElapsed_L: u64 = SafeMath.sub64(currentBlock, lastUpdateBlock_L);
+
+            // Retrieve EWMA parameters
+            const alpha: u256 = Quoter.a; // α = 0.3 represented with implicit scaling
+            const SCALING_FACTOR: u256 = Quoter.getScalingFactor(); // 10,000
+
+            // Calculate decay factors: (1 - alpha)^blocksElapsed
+            const oneMinusAlpha: u256 = SafeMath.sub(SCALING_FACTOR, alpha);
+            const decayFactor_V: u256 = SafeMath.max(
+                Quoter.pow(oneMinusAlpha, u256.fromU64(blocksElapsed_V)),
+                u256.One,
+            );
+
+            const decayFactor_L: u256 = SafeMath.max(
+                Quoter.pow(oneMinusAlpha, u256.fromU64(blocksElapsed_L)),
+                u256.One,
+            );
+
+            // Simulate updated EWMA_V and EWMA_L
+            currentEWMA_V = SafeMath.div(SafeMath.mul(decayFactor_V, queue.ewmaV), SCALING_FACTOR);
+            currentEWMA_L = SafeMath.div(SafeMath.mul(decayFactor_L, queue.ewmaL), SCALING_FACTOR);
+        } else {
+            // Use current EWMA values without simulating decay
+            currentEWMA_V = queue.ewmaV;
+            currentEWMA_L = queue.ewmaL;
         }
 
-        // Serialize the estimated quantity of tokens and required satoshis
-        const result = new BytesWriter(72);
-        result.writeU256(estimatedQuantity); // Tokens in smallest units (considering decimals)
-        result.writeU256(requiredSatoshis); // Satoshis used
-        //result.writeU64(ticks);
+        // Ensure currentEWMA_L is not zero
+        if (u256.eq(currentEWMA_L, u256.Zero)) {
+            throw new Revert('Insufficient liquidity to provide a quote');
+        }
+
+        // Calculate the current price using the EWMA values
+        const currentPrice: u256 = quoter.calculatePrice(
+            queue.p0,
+            Quoter.k,
+            currentEWMA_V,
+            currentEWMA_L,
+        );
+
+        // Ensure currentPrice is not zero
+        if (u256.eq(currentPrice, u256.Zero)) {
+            throw new Revert('Price is zero');
+        }
+
+        // Calculate tokensOut = (satoshisIn * currentPrice) / SCALING_FACTOR
+        const SCALING_FACTOR: u256 = Quoter.getScalingFactor();
+        let tokensOut: u256 = SafeMath.div(SafeMath.mul(satoshisIn, currentPrice), SCALING_FACTOR);
+
+        // Retrieve available liquidity
+        const availableLiquidity: u256 = queue.liquidity;
+
+        // If tokensOut > availableLiquidity, adjust tokensOut and recompute requiredSatoshis
+        if (u256.gt(tokensOut, availableLiquidity)) {
+            tokensOut = availableLiquidity;
+
+            // Recalculate requiredSatoshis = (tokensOut * SCALING_FACTOR) / currentPrice
+            const requiredSatoshis: u256 = SafeMath.div(
+                SafeMath.mul(tokensOut, SCALING_FACTOR),
+                currentPrice,
+            );
+
+            // Ensure requiredSatoshis >= minimumTradeSize
+            if (u256.lt(requiredSatoshis, this.minimumTradeSize)) {
+                throw new Revert('Insufficient liquidity to fulfill the trade');
+            }
+
+            // Serialize the estimated quantity and required satoshis
+            const result = new BytesWriter(64); // 32 bytes for each u256
+            result.writeU256(tokensOut); // Tokens in smallest units
+            result.writeU256(requiredSatoshis); // Satoshis required
+            return result;
+        }
+
+        // Else, tokensOut <= availableLiquidity
+        // The required satoshis are the same as satoshisIn
+
+        // Serialize the estimated quantity and required satoshis
+        const result = new BytesWriter(64);
+        result.writeU256(tokensOut);
+        result.writeU256(satoshisIn);
         return result;
+    }
+
+    /**
+     * @function calculateDecayFactor
+     * @description
+     * Calculates the decay factor (1 - alpha)^blocksElapsed using exponentiation by squaring
+     * for efficiency.
+     *
+     * @param {u256} alpha - The smoothing factor, scaled by DECIMALS.
+     * @param {u256} DECIMALS - The scaling factor used for fixed-point arithmetic.
+     * @param {u256} blocksElapsed - The number of blocks elapsed since the last update.
+     *
+     * @returns {u256} - The decay factor, scaled by DECIMALS.
+     */
+    private calculateDecayFactor(alpha: u256, DECIMALS: u256, blocksElapsed: u256): u256 {
+        if (blocksElapsed.isZero()) {
+            return DECIMALS; // (1 - alpha)^0 = 1, scaled by DECIMALS
+        }
+
+        let decayFactor: u256 = DECIMALS; // Start with 1 * DECIMALS
+        const oneMinusAlpha: u256 = SafeMath.sub(DECIMALS, alpha);
+
+        let exponent: u256 = blocksElapsed;
+        let base: u256 = oneMinusAlpha;
+
+        while (u256.gt(exponent, u256.Zero)) {
+            if (u256.eq(u256.and(exponent, u256.One), u256.One)) {
+                decayFactor = SafeMath.mul(decayFactor, base);
+                decayFactor = SafeMath.div(decayFactor, DECIMALS);
+            }
+            base = SafeMath.mul(base, base);
+            base = SafeMath.div(base, DECIMALS);
+            exponent = SafeMath.div(exponent, TWO);
+        }
+
+        return decayFactor;
     }
 
     /**
@@ -591,11 +693,11 @@ export class EWMA extends OP_NET {
             throw new Revert('Invalid token address');
         }
 
-        //const tokenUint = this.u256FromAddress(token);
-        //const reserve = this.totalReserves.get(tokenUint) || u256.Zero;
+        const queue = this.getLiquidityQueue(token, this.addressToPointer(token));
 
-        const result = new BytesWriter(32); // u256 is 32 bytes
-        //result.writeU256(reserve);
+        const result = new BytesWriter(64); // u256 is 32 bytes
+        result.writeU256(queue.liquidity);
+        result.writeU256(queue.reservedLiquidity);
         return result;
     }
 
@@ -605,5 +707,13 @@ export class EWMA extends OP_NET {
 
         const response = Blockchain.call(token, calldata);
         return response.readU8();
+    }
+
+    private getOwner(token: Address): Address {
+        const calldata = new BytesWriter(4);
+        calldata.writeSelector(EWMA.OWNER_SELECTOR);
+
+        const response = Blockchain.call(token, calldata);
+        return response.readAddress();
     }
 }
