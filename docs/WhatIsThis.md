@@ -37,7 +37,7 @@ Initially, the EWMA values were intended to be updated using the standard EWMA f
 ```
 
 However, this formula assumes updates occur at every time interval, which isn't always the case in a blockchain context
-due to variable block times and transaction frequencies. Additionally, calculating powers for $ (1 - \alpha)^n $ can
+due to variable block times and transaction frequencies. Additionally, calculating powers for $$ (1 - \alpha)^n $$ can
 lead to overflows or loss of precision in fixed-point arithmetic.
 
 #### **Adjusted EWMA Formula**
