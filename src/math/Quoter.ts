@@ -2,13 +2,13 @@ import { u128, u256 } from 'as-bignum/assembly';
 import { SafeMath } from '@btc-vision/btc-runtime/runtime';
 
 export class Quoter {
-    public static readonly a: u256 = u256.fromU32(2_000_000);
-    public static readonly k: u256 = u256.fromU32(600_000);
+    public static readonly a: u256 = u256.fromU64(30_000_000);
+    public static readonly k: u256 = u256.fromU64(5_000_000);
 
-    public static readonly SCALING_FACTOR: u256 = u256.fromU32(100_000_000);
+    public static readonly SCALING_FACTOR: u256 = u256.fromU64(100_000_000);
     public static readonly MIN_EWMA_L: u256 = u256.fromU64(1);
-    public static readonly PRICE_CAP: u256 = u256.fromU64(u64.MAX_VALUE);
-    public static readonly DECAY_RATE_PER_BLOCK: u256 = u128.Max.toU256();
+    public static readonly PRICE_CAP: u256 = u128.Max.toU256();
+    public static readonly DECAY_RATE_PER_BLOCK: u256 = u256.fromU64(99_900_000);
 
     public static getScalingFactor(): u256 {
         return Quoter.SCALING_FACTOR;
@@ -73,12 +73,7 @@ export class Quoter {
             scalingFactor,
         );
 
-        const ewma: u256 = SafeMath.add(weightedPrevEWMA, weightedCurrentValue);
-        //Blockchain.log(
-        //    `Updated EWMA: ${ewma.toString()} - previous ewma: ${previousEWMA.toString()} - current value: ${currentValue.toString()} - decayFactor: ${decayFactor} - blocks elapsed: ${blocksElapsed.toString()} - weightedCurrentValue: ${weightedCurrentValue} - weightedPrevEWMA: ${weightedPrevEWMA}`,
-        //);
-
-        return ewma;
+        return SafeMath.add(weightedPrevEWMA, weightedCurrentValue);
     }
 }
 

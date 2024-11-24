@@ -172,6 +172,7 @@ export class LiquidityQueue {
     public reserveLiquidity(buyer: Address, maximumAmount: u256): u256 {
         const reservation = new Reservation(buyer, this.token);
         const currentPrice: u256 = this.quote();
+
         let tokensOut: u256 = this.estimateOutputTokens(maximumAmount, currentPrice);
 
         let tokensReserved: u256 = u256.Zero;

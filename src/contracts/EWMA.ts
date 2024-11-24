@@ -443,10 +443,6 @@ export class EWMA extends OP_NET {
                     SafeMath.mul(queue.ewmaL, decayFactor_L),
                     SCALING_FACTOR,
                 );
-
-                Blockchain.log(
-                    `Decay factor: ${decayFactor_L.toString()} - currentEWMA_L: ${currentEWMA_L.toString()}`,
-                );
             } else {
                 // Update EWMA_L normally when liquidity is available
                 currentEWMA_L = quoter.updateEWMA(

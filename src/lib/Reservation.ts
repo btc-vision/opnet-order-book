@@ -45,10 +45,6 @@ export class Reservation {
     }
 
     public save(): void {
-        Blockchain.log(
-            `Reserved ${this.reservedIndexes.getLength()} providers for ${this.reservationId}`,
-        );
-
         this.userReservation.save();
         this.reservedIndexes.save();
         this.reservedValues.save();
