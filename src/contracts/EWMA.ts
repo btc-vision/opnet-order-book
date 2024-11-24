@@ -471,8 +471,7 @@ export class EWMA extends OP_NET {
             throw new Revert('Price is zero');
         }
 
-        // Calculate tokensOut = (satoshisIn * currentPrice) / SCALING_FACTOR
-        let tokensOut: u256 = SafeMath.div(SafeMath.mul(satoshisIn, currentPrice), SCALING_FACTOR);
+        let tokensOut: u256 = SafeMath.mul(satoshisIn, currentPrice);
 
         // Retrieve available liquidity (total liquidity minus reserved liquidity)
         const availableLiquidity: u256 = SafeMath.sub(queue.liquidity, queue.reservedLiquidity);
@@ -482,16 +481,13 @@ export class EWMA extends OP_NET {
             tokensOut = availableLiquidity;
 
             // Recalculate requiredSatoshis = (tokensOut * SCALING_FACTOR) / currentPrice
-            const requiredSatoshis: u256 = SafeMath.div(
-                SafeMath.mul(tokensOut, SCALING_FACTOR),
-                currentPrice,
-            );
+            const requiredSatoshis: u256 = SafeMath.div(tokensOut, currentPrice);
 
             // Serialize the estimated quantity and required satoshis
             const result = new BytesWriter(96);
             result.writeU256(tokensOut); // Tokens in smallest units
             result.writeU256(requiredSatoshis); // Satoshis required
-            result.writeU256(SafeMath.div(currentPrice, Quoter.getScalingFactor())); // Satoshis required
+            result.writeU256(currentPrice); // Current price
             return result;
         }
 
@@ -502,7 +498,7 @@ export class EWMA extends OP_NET {
         const result = new BytesWriter(96);
         result.writeU256(tokensOut);
         result.writeU256(satoshisIn);
-        result.writeU256(SafeMath.div(currentPrice, Quoter.getScalingFactor()));
+        result.writeU256(currentPrice);
         return result;
     }
 

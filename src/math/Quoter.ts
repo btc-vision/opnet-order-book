@@ -5,7 +5,7 @@ export class Quoter {
     public static readonly a: u256 = u256.fromU64(30_000_000);
     public static readonly k: u256 = u256.fromU64(5_000_000);
 
-    public static readonly SCALING_FACTOR: u256 = u256.fromU64(100_000_000);
+    public static readonly SCALING_FACTOR: u256 = u256.fromU64(100_000_000); // 1 BTC
     public static readonly MIN_EWMA_L: u256 = u256.fromU64(1);
     public static readonly PRICE_CAP: u256 = u128.Max.toU256();
     public static readonly DECAY_RATE_PER_BLOCK: u256 = u256.fromU64(99_900_000);
