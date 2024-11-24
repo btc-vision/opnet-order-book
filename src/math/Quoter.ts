@@ -1,11 +1,13 @@
 import { u256 } from 'as-bignum/assembly';
-import { SafeMath } from '../../../btc-runtime/runtime';
+import { SafeMath } from '@btc-vision/btc-runtime/runtime';
 
 export class Quoter {
     public static readonly a: u256 = u256.fromU32(30_000_000);
     public static readonly k: u256 = u256.fromU32(5_000_000);
 
     public static readonly SCALING_FACTOR: u256 = u256.fromU32(100_000_000);
+    public static readonly MIN_EWMA_L: u256 = u256.fromU64(1);
+    public static readonly PRICE_CAP: u256 = u256.fromU64(u64.MAX_VALUE);
 
     public static getScalingFactor(): u256 {
         return Quoter.SCALING_FACTOR;
@@ -28,11 +30,13 @@ export class Quoter {
     }
 
     public calculatePrice(P0: u256, k: u256, EWMA_V: u256, EWMA_L: u256): u256 {
-        if (u256.eq(EWMA_L, u256.Zero)) {
-            return P0;
-        }
+        // Prevent division by zero or extremely small values
+        const adjustedEWMA_L = u256.lt(EWMA_L, Quoter.MIN_EWMA_L) ? Quoter.MIN_EWMA_L : EWMA_L;
+        const ratio: u256 = SafeMath.div(
+            SafeMath.mul(EWMA_V, Quoter.SCALING_FACTOR),
+            adjustedEWMA_L,
+        );
 
-        const ratio: u256 = SafeMath.div(SafeMath.mul(EWMA_V, Quoter.SCALING_FACTOR), EWMA_L);
         const scaledAdjustment: u256 = SafeMath.div(SafeMath.mul(k, ratio), Quoter.SCALING_FACTOR);
 
         const adjustedPrice: u256 = SafeMath.div(
@@ -40,7 +44,7 @@ export class Quoter {
             Quoter.SCALING_FACTOR,
         );
 
-        return u256.gt(adjustedPrice, P0) ? adjustedPrice : P0;
+        return u256.gt(adjustedPrice, Quoter.PRICE_CAP) ? Quoter.PRICE_CAP : adjustedPrice;
     }
 
     public updateEWMA(

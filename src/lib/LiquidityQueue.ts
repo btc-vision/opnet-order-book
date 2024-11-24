@@ -16,6 +16,7 @@ import {
     LIQUIDITY_EWMA_P0_POINTER,
     LIQUIDITY_EWMA_V_POINTER,
     LIQUIDITY_QUEUE_POINTER,
+    LIQUIDITY_QUOTE_HISTORY_POINTER,
     LIQUIDITY_RESERVED_POINTER,
     TOTAL_RESERVES_POINTER,
 } from './StoredPointers';
@@ -24,10 +25,13 @@ import { getProvider, Provider } from './Provider';
 import { LiquidityAddedEvent } from '../events/LiquidityAddedEvent';
 import { quoter, Quoter } from '../math/Quoter';
 import { LiquidityReserved } from '../events/LiquidityReserved';
+import { MAX_RESERVATION_AMOUNT_PROVIDER } from '../data-types/UserLiquidity';
+import { Reservation } from './Reservation';
 
 export class LiquidityQueue {
-    public readonly tokenId: u256;
+    public static RESERVATION_EXPIRE_AFTER: u64 = 5;
 
+    public readonly tokenId: u256;
     private readonly _p0: StoredU256;
     private readonly _ewmaL: StoredU256;
     private readonly _ewmaV: StoredU256;
@@ -39,6 +43,9 @@ export class LiquidityQueue {
     private readonly ALPHA: u256 = Quoter.a;
 
     private readonly _lastUpdatedBlockEWMA: StoredU64;
+    private readonly _quoteHistory: StoredU256Array;
+
+    private currentIndex: u64 = 0;
 
     constructor(
         public readonly token: Address,
@@ -48,6 +55,11 @@ export class LiquidityQueue {
         this.tokenId = tokenId;
 
         this._queue = new StoredU256Array(LIQUIDITY_QUEUE_POINTER, tokenIdUint8Array, u256.Zero);
+        this._quoteHistory = new StoredU256Array(
+            LIQUIDITY_QUOTE_HISTORY_POINTER,
+            tokenIdUint8Array,
+            u256.Zero,
+        );
 
         this._ewmaL = new StoredU256(LIQUIDITY_EWMA_L_POINTER, tokenId, u256.Zero);
         this._ewmaV = new StoredU256(LIQUIDITY_EWMA_V_POINTER, tokenId, u256.Zero);
@@ -113,6 +125,8 @@ export class LiquidityQueue {
 
     public save(): void {
         this._lastUpdatedBlockEWMA.save();
+        this._queue.save();
+        this._quoteHistory.save();
     }
 
     public quote(): u256 {
@@ -135,7 +149,6 @@ export class LiquidityQueue {
         this.updateTotalReserve(this.tokenId, amountInU256, true);
 
         const provider: Provider = getProvider(providerId);
-
         const liquidity: u128 = provider.liquidity;
         if (!u128.lt(liquidity, SafeMath.sub128(u128.Max, amountIn))) {
             throw new Revert('Liquidity overflow. Please add a smaller amount.');
@@ -149,8 +162,7 @@ export class LiquidityQueue {
             this._queue.push(providerId);
         }
 
-        this._queue.save();
-
+        this.setBlockQuote();
         this.updateEWMA_L();
 
         const liquidityEvent = new LiquidityAddedEvent(provider.liquidity, receiver);
@@ -158,10 +170,21 @@ export class LiquidityQueue {
     }
 
     public reserveLiquidity(buyer: Address, maximumAmount: u256): u256 {
+        const reservation = new Reservation(buyer, this.token);
         const currentPrice: u256 = this.quote();
-        const tokensOut: u256 = this.estimateOutputTokens(maximumAmount, currentPrice);
+        let tokensOut: u256 = this.estimateOutputTokens(maximumAmount, currentPrice);
 
         let tokensReserved: u256 = u256.Zero;
+
+        // Calculate total available liquidity
+        const totalAvailableLiquidity: u256 = SafeMath.sub(this.liquidity, this.reservedLiquidity);
+        if (u256.lt(totalAvailableLiquidity, tokensOut)) {
+            tokensOut = totalAvailableLiquidity;
+        }
+
+        if (tokensOut.isZero()) {
+            return tokensReserved;
+        }
 
         while (u256.lt(tokensReserved, tokensOut)) {
             const provider: Provider | null = this.getNextProviderWithLiquidity();
@@ -169,24 +192,37 @@ export class LiquidityQueue {
                 break;
             }
 
-            const providerLiquidity: u256 = provider.liquidity.toU256();
+            const providerLiquidity: u256 = SafeMath.sub128(
+                provider.liquidity,
+                provider.reserved,
+            ).toU256();
 
             const reserveAmount: u256 = SafeMath.min(
-                providerLiquidity,
-                SafeMath.sub(tokensOut, tokensReserved),
+                SafeMath.min(providerLiquidity, SafeMath.sub(tokensOut, tokensReserved)),
+                MAX_RESERVATION_AMOUNT_PROVIDER.toU256(),
             );
 
-            provider.liquidity = SafeMath.sub(providerLiquidity, reserveAmount).toU128();
-
-            this.updateTotalReserve(this.tokenId, reserveAmount, false);
-            this.updateTotalReserved(provider.providerId, reserveAmount, true);
+            // Update provider's reserved amount
+            provider.reserved = SafeMath.add128(provider.reserved, reserveAmount.toU128());
 
             tokensReserved = SafeMath.add(tokensReserved, reserveAmount);
-
-            if (provider.liquidity.isZero()) {
-                provider.setActive(false);
-            }
+            reservation.reserveAtIndex(provider.indexedAt, reserveAmount.toU128());
         }
+
+        if (tokensReserved.isZero()) {
+            throw new Revert('No liquidity available');
+        }
+
+        //this.updateTotalReserve(this.tokenId, tokensReserved, false);
+        this.updateTotalReserved(this.tokenId, tokensReserved, true);
+
+        // Config for the reservation
+        reservation.setExpirationBlock(
+            Blockchain.block.numberU64 + LiquidityQueue.RESERVATION_EXPIRE_AFTER,
+            this._queue.startingIndex(),
+        );
+
+        reservation.save();
 
         this.updateEWMA_V(tokensReserved);
         this.updateEWMA_L();
@@ -213,20 +249,44 @@ export class LiquidityQueue {
         this.lastUpdateBlockEWMA_V = Blockchain.block.numberU64;
     }
 
+    private setBlockQuote(): void {
+        // I am aware that this will break at block 2^32, but it is not a concern for now or any human lifetime.
+        // In 82850 years, everything will break
+        if (<u64>u32.MAX_VALUE < Blockchain.block.numberU64) {
+            throw new Revert('Block number is too large');
+        }
+
+        const blockNumberU32: u32 = <u32>Blockchain.block.numberU64;
+        this._quoteHistory.set(blockNumberU32, this.quote());
+    }
+
     private updateEWMA_L(): void {
         const blocksElapsed: u64 = SafeMath.sub64(
             Blockchain.block.numberU64,
             this.lastUpdateBlockEWMA_L,
         );
 
-        const currentLiquidityU256: u256 = this.liquidity;
+        const currentLiquidityU256: u256 = SafeMath.sub(this.liquidity, this.reservedLiquidity);
+        if (currentLiquidityU256.isZero()) {
+            // When liquidity is zero, adjust EWMA_L to decrease over time
+            // Define a decay factor (e.g., 0.9 per block)
+            const DECAY_RATE_PER_BLOCK: u256 = u256.fromU64(90_000_000); // Represents 0.9 in scaled units
+            const scalingFactor: u256 = Quoter.getScalingFactor();
 
-        this.ewmaL = quoter.updateEWMA(
-            currentLiquidityU256,
-            this.ewmaL,
-            this.ALPHA,
-            u256.fromU64(blocksElapsed),
-        );
+            // Compute the decay over the elapsed blocks
+            const decayFactor: u256 = Quoter.pow(DECAY_RATE_PER_BLOCK, u256.fromU64(blocksElapsed));
+
+            // Adjust ewmaL by applying the decay
+            this.ewmaL = SafeMath.div(SafeMath.mul(this.ewmaL, decayFactor), scalingFactor);
+        } else {
+            // Update ewmaL normally when liquidity is available
+            this.ewmaL = quoter.updateEWMA(
+                currentLiquidityU256,
+                this.ewmaL,
+                this.ALPHA,
+                u256.fromU64(blocksElapsed),
+            );
+        }
 
         this.lastUpdateBlockEWMA_L = Blockchain.block.numberU64;
     }
@@ -240,13 +300,13 @@ export class LiquidityQueue {
         this._totalReserves.set(token, newReserve);
     }
 
-    private updateTotalReserved(providerId: u256, amount: u256, increase: bool): void {
-        const currentReserved = this._totalReserved.get(providerId) || u256.Zero;
+    private updateTotalReserved(token: u256, amount: u256, increase: bool): void {
+        const currentReserved = this._totalReserved.get(token) || u256.Zero;
         const newReserved = increase
             ? SafeMath.add(currentReserved, amount)
             : SafeMath.sub(currentReserved, amount);
 
-        this._totalReserved.set(providerId, newReserved);
+        this._totalReserved.set(token, newReserved);
     }
 
     private getNextProviderWithLiquidity(): Provider | null {
@@ -256,14 +316,53 @@ export class LiquidityQueue {
         const length: u64 = this._queue.getLength();
         const index: u64 = this._queue.startingIndex();
 
-        let i: u64 = index;
+        // Ensure that the starting index does not exceed the queue length to prevent underflow
+        if (index > length) {
+            throw new Revert('Starting index exceeds queue length');
+        }
+
+        let i: u64 = index + this.currentIndex;
 
         while (i < length) {
-            providerId = this._queue.get((i - index) as u32);
+            // Check for potential underflow before subtracting
+            if (i < index) {
+                throw new Revert('Index underflow detected');
+            }
+
+            const difference: u64 = i - index;
+
+            // Ensure the difference fits within a u16 to prevent overflow
+            if (difference > <u64>u16.MAX_VALUE) {
+                throw new Revert('Index difference exceeds u16.MAX_VALUE');
+            }
+
+            const v: u16 = <u16>difference;
+
+            // Additional check to ensure that casting did not wrap around
+            if (v === u16.MAX_VALUE && difference !== <u64>u16.MAX_VALUE) {
+                throw new Revert('Index overflow detected');
+            }
+
+            providerId = this._queue.get(i);
             provider = getProvider(providerId);
 
-            if (!provider.liquidity.isZero()) {
+            if (u128.lt(provider.liquidity, provider.reserved)) {
+                throw new Revert(
+                    `Impossible state: liquidity < reserved for provider ${providerId}.`,
+                );
+            }
+
+            const availableLiquidity: u128 = SafeMath.sub128(provider.liquidity, provider.reserved);
+            if (!availableLiquidity.isZero()) {
+                provider.indexedAt = v;
+
+                this.currentIndex = i - index;
                 return provider;
+            }
+
+            // Check for potential overflow before incrementing
+            if (i == u64.MAX_VALUE) {
+                throw new Revert('Index increment overflow');
             }
 
             i++;

@@ -1,13 +1,12 @@
 import { u128, u256 } from 'as-bignum/assembly';
 import { Potential } from '@btc-vision/btc-runtime/runtime';
 import { AdvancedStoredString } from '../stored/AdvancedStoredString';
-import { Entry } from '../cache/Entry';
-import { findProvider, insertProvider } from '../cache/ProviderCache';
 import { UserLiquidity } from '../data-types/UserLiquidity';
 import { PROVIDER_ADDRESS_POINTER, PROVIDER_LIQUIDITY_POINTER } from './StoredPointers';
 
 export class Provider {
     public providerId: u256;
+    public indexedAt: u16 = 0;
 
     private userLiquidity: UserLiquidity;
 
@@ -23,6 +22,14 @@ export class Provider {
 
     public set liquidity(value: u128) {
         this.userLiquidity.setLiquidityAmount(value);
+    }
+
+    public get reserved(): u128 {
+        return this.userLiquidity.getReservedAmount();
+    }
+
+    public set reserved(value: u128) {
+        this.userLiquidity.setReservedAmount(value);
     }
 
     private _btcReceiver: Potential<AdvancedStoredString> = null;
@@ -67,6 +74,24 @@ export class Provider {
     }
 }
 
+const cache: Array<Provider> = new Array<Provider>();
+
+function findProvider(id: u256): Provider | null {
+    for (let i: i32 = 0; i < cache.length; i++) {
+        if (u256.eq(cache[i].providerId, id)) {
+            return cache[i];
+        }
+    }
+
+    return null;
+}
+
+export function saveAllProviders(): void {
+    for (let i: i32 = 0; i < cache.length; i++) {
+        cache[i].save();
+    }
+}
+
 /**
  * @function getProvider
  * @description Retrieves a Provider using the u256 key. Creates and caches a new Provider if not found.
@@ -74,15 +99,13 @@ export class Provider {
  * @returns {Provider} - The retrieved or newly created Provider.
  */
 export function getProvider(providerId: u256): Provider {
-    const existingProvider = findProvider(providerId);
-    if (existingProvider) {
-        return existingProvider;
+    let provider = findProvider(providerId);
+
+    if (provider === null) {
+        provider = new Provider(providerId);
+
+        cache.push(provider);
     }
 
-    const newProvider = new Provider(providerId);
-
-    // Insert the new Provider into the sorted array
-    insertProvider(new Entry(providerId, newProvider));
-
-    return newProvider;
+    return provider;
 }

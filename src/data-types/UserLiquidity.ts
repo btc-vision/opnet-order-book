@@ -5,7 +5,14 @@ import {
     BytesWriter,
     encodePointer,
     MemorySlotPointer,
-} from '../../../btc-runtime/runtime';
+} from '@btc-vision/btc-runtime/runtime';
+
+const bytes = new Uint8Array(15);
+for (let i: i32 = 0; i < 15; i++) {
+    bytes[i] = 0xff;
+}
+
+export const MAX_RESERVATION_AMOUNT_PROVIDER = u128.fromBytes(bytes, true);
 
 @final
 export class UserLiquidity {
@@ -15,7 +22,7 @@ export class UserLiquidity {
     private activeFlag: u8 = 0;
     private pendingReservationsFlag: u8 = 0;
     private liquidityAmount: u128 = u128.Zero;
-    private spare: StaticArray<u8> = new StaticArray<u8>(14);
+    private reservedAmount: u128 = u128.Zero;
 
     // Flags to manage state
     private isLoaded: bool = false;
@@ -89,6 +96,17 @@ export class UserLiquidity {
     }
 
     /**
+     * @method getReservedAmount
+     * @description Retrieves the reserved amount.
+     * @returns {u128} - The reserved amount.
+     */
+    @inline
+    public getReservedAmount(): u128 {
+        this.ensureValues();
+        return this.reservedAmount;
+    }
+
+    /**
      * @method getLiquidityAmount
      * @description Retrieves the liquidity amount.
      * @returns {u128} - The liquidity amount.
@@ -114,33 +132,15 @@ export class UserLiquidity {
     }
 
     /**
-     * @method getSpare
-     * @description Retrieves the spare bytes.
-     * @returns {StaticArray<u8>} - The 14-byte spare array.
+     * @method setLiquidityAmount
+     * @description Sets the liquidity amount.
+     * @param {u128} amount - The liquidity amount to set.
      */
     @inline
-    public getSpare(): StaticArray<u8> {
+    public setReservedAmount(amount: u128): void {
         this.ensureValues();
-        return this.spare;
-    }
-
-    /**
-     * @method setSpare
-     * @description Sets the spare bytes.
-     * @param {StaticArray<u8>} spareBytes - The 14-byte array to set as spare.
-     */
-    @inline
-    public setSpare(spareBytes: StaticArray<u8>): void {
-        assert(spareBytes.length == 14, 'Spare bytes must be exactly 14 bytes');
-        this.ensureValues();
-        let changed = false;
-        for (let i: u8 = 0; i < 14; i++) {
-            if (this.spare[i] != spareBytes[i]) {
-                this.spare[i] = spareBytes[i];
-                changed = true;
-            }
-        }
-        if (changed) {
+        if (this.reservedAmount != amount) {
+            this.reservedAmount = amount;
             this.isChanged = true;
         }
     }
@@ -166,10 +166,7 @@ export class UserLiquidity {
         this.activeFlag = 0;
         this.pendingReservationsFlag = 0;
         this.liquidityAmount = u128.Zero;
-
-        for (let i: u8 = 0; i < 14; i++) {
-            this.spare[i] = 0;
-        }
+        this.reservedAmount = u128.Zero;
         this.isChanged = true;
     }
 
@@ -181,11 +178,7 @@ export class UserLiquidity {
     @inline
     public toString(): string {
         this.ensureValues();
-        let spareStr = '';
-        for (let i: u8 = 0; i < 14; i++) {
-            spareStr += this.spare[i].toString(16).padStart(2, '0');
-        }
-        return `ActiveFlag: ${this.activeFlag}, PendingReservationsFlag: ${this.pendingReservationsFlag}, LiquidityAmount: ${this.liquidityAmount.toString()}, Spare: ${spareStr}`;
+        return `ActiveFlag: ${this.activeFlag}, PendingReservationsFlag: ${this.pendingReservationsFlag}, LiquidityAmount: ${this.liquidityAmount.toString()}, ReservedAmount: ${this.reservedAmount.toString()}`;
     }
 
     /**
@@ -210,19 +203,21 @@ export class UserLiquidity {
             const storedU256: u256 = Blockchain.getStorageAt(this.u256Pointer, u256.Zero);
             const reader = new BytesReader(storedU256.toUint8Array());
 
-            // Unpack activeFlag (1 byte)
-            this.activeFlag = reader.readU8();
+            const flag = reader.readU8();
 
-            // Unpack pendingReservationsFlag (1 byte)
-            this.pendingReservationsFlag = reader.readU8();
+            this.activeFlag = flag & 0b1;
+            this.pendingReservationsFlag = (flag >> 1) & 0b1;
 
             // Unpack liquidityAmount (16 bytes, little endian)
             this.liquidityAmount = reader.readU128();
 
-            // Unpack spare (14 bytes)
-            for (let i: u8 = 0; i < 14; i++) {
-                this.spare[i] = reader.readU8();
+            // Additional 15 bytes are for the reservation amount
+            const bytes = new Uint8Array(16);
+            for (let i: i32 = 0; i < 15; i++) {
+                bytes[i] = reader.readU8();
             }
+
+            this.reservedAmount = u128.fromBytes(bytes, true);
 
             this.isLoaded = true;
         }
@@ -237,18 +232,15 @@ export class UserLiquidity {
     private packValues(): u256 {
         const writer = new BytesWriter(32);
 
-        // Pack activeFlag (1 byte)
-        writer.writeU8(this.activeFlag);
-
-        // Pack pendingReservationsFlag (1 byte)
-        writer.writeU8(this.pendingReservationsFlag);
+        const flag: u8 = (this.pendingReservationsFlag << 1) | this.activeFlag;
+        writer.writeU8(flag);
 
         // Pack liquidityAmount (16 bytes, little endian)
         writer.writeU128(this.liquidityAmount);
 
-        // Pack spare bytes (14 bytes)
-        for (let i: u8 = 0; i < 14; i++) {
-            writer.writeU8(this.spare[i]);
+        const bytes = this.reservedAmount.toBytes(true);
+        for (let i: i32 = 0; i < 15; i++) {
+            writer.writeU8(bytes[i] || 0);
         }
 
         return u256.fromBytes(writer.getBuffer());

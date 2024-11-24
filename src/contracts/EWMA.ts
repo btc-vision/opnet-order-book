@@ -16,10 +16,10 @@ import { OP_NET } from '@btc-vision/btc-runtime/runtime/contracts/OP_NET';
 import { u128, u256 } from 'as-bignum/assembly';
 import { FEE_CREDITS_POINTER, LIQUIDITY_LIMITATION } from '../lib/StoredPointers';
 import { FEE_COLLECT_SCRIPT_PUBKEY } from '../utils/OrderBookUtils';
-import { saveAllProviders } from '../cache/ProviderCache';
 import { LiquidityQueue } from '../lib/LiquidityQueue';
-import { ripemd160 } from '../../../btc-runtime/runtime/env/global';
+import { ripemd160 } from '@btc-vision/btc-runtime/runtime/env/global';
 import { quoter, Quoter } from '../math/Quoter';
+import { saveAllProviders } from '../lib/Provider';
 
 const TWO: u256 = u256.fromU32(2);
 
@@ -482,9 +482,9 @@ export class EWMA extends OP_NET {
             );
 
             // Ensure requiredSatoshis >= minimumTradeSize
-            if (u256.lt(requiredSatoshis, this.minimumTradeSize)) {
-                throw new Revert('Insufficient liquidity to fulfill the trade');
-            }
+            //if (u256.lt(requiredSatoshis, this.minimumTradeSize)) {
+            //    throw new Revert('Insufficient liquidity to fulfill the trade');
+            //}
 
             // Serialize the estimated quantity and required satoshis
             const result = new BytesWriter(64); // 32 bytes for each u256
