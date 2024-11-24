@@ -443,6 +443,10 @@ export class EWMA extends OP_NET {
                     SafeMath.mul(queue.ewmaL, decayFactor_L),
                     SCALING_FACTOR,
                 );
+
+                Blockchain.log(
+                    `Decay factor: ${decayFactor_L.toString()} - currentEWMA_L: ${currentEWMA_L.toString()}`,
+                );
             } else {
                 // Update EWMA_L normally when liquidity is available
                 currentEWMA_L = quoter.updateEWMA(
@@ -491,7 +495,7 @@ export class EWMA extends OP_NET {
             const result = new BytesWriter(96);
             result.writeU256(tokensOut); // Tokens in smallest units
             result.writeU256(requiredSatoshis); // Satoshis required
-            result.writeU256(currentPrice); // Satoshis required
+            result.writeU256(SafeMath.div(currentPrice, Quoter.getScalingFactor())); // Satoshis required
             return result;
         }
 
@@ -502,7 +506,7 @@ export class EWMA extends OP_NET {
         const result = new BytesWriter(96);
         result.writeU256(tokensOut);
         result.writeU256(satoshisIn);
-        result.writeU256(currentPrice);
+        result.writeU256(SafeMath.div(currentPrice, Quoter.getScalingFactor()));
         return result;
     }
 
