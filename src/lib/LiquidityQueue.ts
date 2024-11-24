@@ -269,12 +269,13 @@ export class LiquidityQueue {
         const currentLiquidityU256: u256 = SafeMath.sub(this.liquidity, this.reservedLiquidity);
         if (currentLiquidityU256.isZero()) {
             // When liquidity is zero, adjust EWMA_L to decrease over time
-            // Define a decay factor (e.g., 0.9 per block)
-            const DECAY_RATE_PER_BLOCK: u256 = u256.fromU64(90_000_000); // Represents 0.9 in scaled units
             const scalingFactor: u256 = Quoter.getScalingFactor();
 
             // Compute the decay over the elapsed blocks
-            const decayFactor: u256 = Quoter.pow(DECAY_RATE_PER_BLOCK, u256.fromU64(blocksElapsed));
+            const decayFactor: u256 = Quoter.pow(
+                Quoter.DECAY_RATE_PER_BLOCK,
+                u256.fromU64(blocksElapsed),
+            );
 
             // Adjust ewmaL by applying the decay
             this.ewmaL = SafeMath.div(SafeMath.mul(this.ewmaL, decayFactor), scalingFactor);

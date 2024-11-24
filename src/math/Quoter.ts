@@ -8,6 +8,7 @@ export class Quoter {
     public static readonly SCALING_FACTOR: u256 = u256.fromU32(100_000_000);
     public static readonly MIN_EWMA_L: u256 = u256.fromU64(1);
     public static readonly PRICE_CAP: u256 = u256.fromU64(u64.MAX_VALUE);
+    public static readonly DECAY_RATE_PER_BLOCK: u256 = u256.fromU64(90_000_000);
 
     public static getScalingFactor(): u256 {
         return Quoter.SCALING_FACTOR;
