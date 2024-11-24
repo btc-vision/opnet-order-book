@@ -21,7 +21,7 @@ liquidity, providing a secure and efficient way to adjust the price without exte
 
 ### **Price Calculation Formula**
 
-The price at time$t$is calculated using the following formula:
+The price at time $t$ is calculated using the following formula:
 
 ```math
 
