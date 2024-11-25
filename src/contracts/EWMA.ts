@@ -404,6 +404,7 @@ export class EWMA extends OP_NET {
             throw new Revert('Requested amount is below minimum trade size');
         }
 
+        // Retrieve the liquidity queue for the token
         const queue: LiquidityQueue = this.getLiquidityQueue(token, this.addressToPointer(token));
 
         // Simulate updating ewmaV and ewmaL to the current block without modifying the stored values
@@ -418,11 +419,9 @@ export class EWMA extends OP_NET {
 
         // Simulate ewmaV update with currentBuyVolume as zero (since no buy has occurred yet)
         let simulatedEWMA_V: u256 = queue.ewmaV;
-        // currentBuyVolume is zero, so no need to scale it
         simulatedEWMA_V = quoter.updateEWMA(
             u256.Zero, // currentBuyVolume is zero
             simulatedEWMA_V,
-            quoter.a,
             u256.fromU64(blocksElapsed_V),
         );
 
@@ -432,27 +431,19 @@ export class EWMA extends OP_NET {
 
         if (currentLiquidityU256.isZero()) {
             // Compute the decay over the elapsed blocks
-            const decayFactor: u256 = Quoter.pow(
-                Quoter.DECAY_RATE_PER_BLOCK,
-                u256.fromU64(blocksElapsed_L),
-            );
+            const oneMinusAlpha: u256 = SafeMath.sub(Quoter.SCALING_FACTOR, quoter.a);
+            const decayFactor: u256 = Quoter.pow(oneMinusAlpha, u256.fromU64(blocksElapsed_L));
 
-            // Adjust ewmaL by applying the decay
+            // Adjust simulatedEWMA_L by applying the decay
             simulatedEWMA_L = SafeMath.div(
                 SafeMath.mul(simulatedEWMA_L, decayFactor),
                 Quoter.SCALING_FACTOR,
             );
         } else {
-            const scaledCurrentLiquidity = SafeMath.mul(
-                currentLiquidityU256,
-                Quoter.SCALING_FACTOR,
-            );
-
             // Update ewmaL normally when liquidity is available
             simulatedEWMA_L = quoter.updateEWMA(
-                scaledCurrentLiquidity,
+                currentLiquidityU256,
                 simulatedEWMA_L,
-                quoter.a,
                 u256.fromU64(blocksElapsed_L),
             );
         }
@@ -469,7 +460,7 @@ export class EWMA extends OP_NET {
             throw new Revert('Price is zero');
         }
 
-        // Calculate tokensOut using multiplication, adjusting for scaling
+        // Correct tokensOut calculation
         let tokensOut: u256 = SafeMath.div(
             SafeMath.mul(satoshisIn, currentPrice),
             Quoter.SCALING_FACTOR,
@@ -479,28 +470,28 @@ export class EWMA extends OP_NET {
         const availableLiquidity: u256 = SafeMath.sub(queue.liquidity, queue.reservedLiquidity);
 
         // If tokensOut > availableLiquidity, adjust tokensOut and recompute requiredSatoshis
+        let requiredSatoshis: u256 = satoshisIn;
+
         if (u256.gt(tokensOut, availableLiquidity)) {
             tokensOut = availableLiquidity;
 
             // Recalculate requiredSatoshis = (tokensOut * SCALING_FACTOR) / currentPrice
-            const requiredSatoshis: u256 = SafeMath.div(
+            requiredSatoshis = SafeMath.div(
                 SafeMath.mul(tokensOut, Quoter.SCALING_FACTOR),
                 currentPrice,
             );
 
-            // Serialize the estimated quantity and required satoshis
-            const result = new BytesWriter(96);
-            result.writeU256(tokensOut); // Tokens in smallest units
-            result.writeU256(requiredSatoshis); // Satoshis required
-            result.writeU256(currentPrice); // Current price (tokens per satoshi)
-            return result;
+            // Ensure requiredSatoshis does not exceed satoshisIn
+            if (u256.gt(requiredSatoshis, satoshisIn)) {
+                requiredSatoshis = satoshisIn;
+            }
         }
 
         // Serialize the estimated quantity and required satoshis
         const result = new BytesWriter(96);
-        result.writeU256(tokensOut);
-        result.writeU256(satoshisIn);
-        result.writeU256(currentPrice);
+        result.writeU256(tokensOut); // Tokens in smallest units
+        result.writeU256(requiredSatoshis); // Satoshis required
+        result.writeU256(currentPrice); // Current price
         return result;
     }
 

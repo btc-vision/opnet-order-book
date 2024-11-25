@@ -25,8 +25,8 @@ import { getProvider, Provider } from './Provider';
 import { LiquidityAddedEvent } from '../events/LiquidityAddedEvent';
 import { quoter, Quoter } from '../math/Quoter';
 import { LiquidityReserved } from '../events/LiquidityReserved';
-import { MAX_RESERVATION_AMOUNT_PROVIDER } from '../data-types/UserLiquidity';
 import { Reservation } from './Reservation';
+import { MAX_RESERVATION_AMOUNT_PROVIDER } from '../data-types/UserLiquidity';
 
 export class LiquidityQueue {
     public static RESERVATION_EXPIRE_AFTER: u64 = 5;
@@ -78,7 +78,7 @@ export class LiquidityQueue {
     }
 
     public set p0(value: u256) {
-        this._p0.value = value;
+        this._p0.value = SafeMath.mul(value, Quoter.SCALING_FACTOR);
     }
 
     public get ewmaV(): u256 {
@@ -131,11 +131,6 @@ export class LiquidityQueue {
         return quoter.calculatePrice(this.p0, this.ewmaV, this.ewmaL);
     }
 
-    public estimateOutputTokens(satoshis: u256, currentPrice: u256): u256 {
-        // If 'satoshis' is in smallest units and 'currentPrice' is scaled, adjust accordingly
-        return SafeMath.div(SafeMath.mul(satoshis, currentPrice), Quoter.SCALING_FACTOR);
-    }
-
     public addLiquidity(providerId: u256, amountIn: u128, receiver: string): void {
         const amountInU256: u256 = amountIn.toU256();
         TransferHelper.safeTransferFrom(
@@ -174,20 +169,23 @@ export class LiquidityQueue {
         const reservation = new Reservation(buyer, this.token);
         const currentPrice: u256 = this.quote();
 
-        let tokensOut: u256 = this.estimateOutputTokens(maximumAmount, currentPrice);
         let tokensReserved: u256 = u256.Zero;
+        let satSpent: u256 = u256.Zero;
 
-        // Calculate total available liquidity
+        let tokensRemaining: u256 = SafeMath.mul(maximumAmount, currentPrice);
+
         const totalAvailableLiquidity: u256 = SafeMath.sub(this.liquidity, this.reservedLiquidity);
-        if (u256.lt(totalAvailableLiquidity, tokensOut)) {
-            tokensOut = totalAvailableLiquidity;
+
+        if (u256.lt(totalAvailableLiquidity, tokensRemaining)) {
+            tokensRemaining = totalAvailableLiquidity;
         }
 
-        if (tokensOut.isZero()) {
-            return tokensReserved;
+        if (tokensRemaining.isZero()) {
+            return u256.Zero;
         }
 
-        while (u256.lt(tokensReserved, tokensOut)) {
+        while (!tokensRemaining.isZero()) {
+            //u256.lt(tokensReserved, tokensOut)
             const provider: Provider | null = this.getNextProviderWithLiquidity();
             if (provider === null) {
                 break;
@@ -199,14 +197,21 @@ export class LiquidityQueue {
             ).toU256();
 
             const reserveAmount: u256 = SafeMath.min(
-                SafeMath.min(providerLiquidity, SafeMath.sub(tokensOut, tokensReserved)),
+                SafeMath.min(providerLiquidity, tokensRemaining),
                 MAX_RESERVATION_AMOUNT_PROVIDER.toU256(),
             );
+
+            const costInSatoshis: u256 = SafeMath.div(reserveAmount, currentPrice);
+            //Blockchain.log(
+            //    `Provider liquidity: ${providerLiquidity.toString()}, satCost: ${costInSatoshis.toString()}, currentPrice: ${currentPrice.toString()}, reserveAmount: ${reserveAmount.toString()}`,
+            //);
 
             // Update provider's reserved amount
             provider.reserved = SafeMath.add128(provider.reserved, reserveAmount.toU128());
 
             tokensReserved = SafeMath.add(tokensReserved, reserveAmount);
+            tokensRemaining = SafeMath.sub(tokensRemaining, reserveAmount);
+            satSpent = SafeMath.add(satSpent, costInSatoshis);
             reservation.reserveAtIndex(provider.indexedAt, reserveAmount.toU128());
         }
 
@@ -241,13 +246,11 @@ export class LiquidityQueue {
             this.lastUpdateBlockEWMA_V,
         );
 
-        // Scale currentBuyVolume
-        const scaledCurrentBuyVolume = SafeMath.mul(currentBuyVolume, Quoter.SCALING_FACTOR);
+        const scaledCurrentBuyVolume: u256 = SafeMath.mul(currentBuyVolume, Quoter.SCALING_FACTOR);
 
         this.ewmaV = quoter.updateEWMA(
             scaledCurrentBuyVolume,
             this.ewmaV,
-            quoter.a,
             u256.fromU64(blocksElapsed),
         );
 
@@ -260,10 +263,10 @@ export class LiquidityQueue {
             this.lastUpdateBlockEWMA_L,
         );
 
-        const currentLiquidityU256: u256 = SafeMath.sub(this.liquidity, this.reservedLiquidity);
-
-        // Scale currentLiquidityU256
-        const scaledCurrentLiquidity = SafeMath.mul(currentLiquidityU256, Quoter.SCALING_FACTOR);
+        const currentLiquidityU256: u256 = SafeMath.mul(
+            SafeMath.sub(this.liquidity, this.reservedLiquidity),
+            Quoter.SCALING_FACTOR,
+        );
 
         if (currentLiquidityU256.isZero()) {
             // When liquidity is zero, adjust EWMA_L to decrease over time
@@ -276,9 +279,8 @@ export class LiquidityQueue {
             this.ewmaL = SafeMath.div(SafeMath.mul(this.ewmaL, decayFactor), Quoter.SCALING_FACTOR);
         } else {
             this.ewmaL = quoter.updateEWMA(
-                scaledCurrentLiquidity,
+                currentLiquidityU256,
                 this.ewmaL,
-                quoter.a,
                 u256.fromU64(blocksElapsed),
             );
         }

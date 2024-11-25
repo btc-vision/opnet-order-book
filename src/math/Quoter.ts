@@ -1,25 +1,18 @@
-import { u128, u256 } from 'as-bignum/assembly';
+import { u256 } from 'as-bignum/assembly';
 import { Blockchain, SafeMath } from '@btc-vision/btc-runtime/runtime';
 
 export class Quoter {
-    public static readonly SCALING_FACTOR: u256 = u256.fromU64(1000000000000000000); //u256.from(scale);
+    public static readonly SCALING_FACTOR: u256 = u256.fromU64(100_000_000);
+    public static readonly SCALING_FACTOR_BTC: u256 = u256.fromU64(100_000_000);
+    public static readonly DECAY_RATE_PER_BLOCK: u256 = u256.fromU64(100_000_000);
 
-    public static readonly MIN_EWMA_L: u256 = u256.One;
-    public static readonly PRICE_CAP: u256 = u128.Max.toU256();
-    public static readonly DECAY_RATE_PER_BLOCK: u256 = Quoter.SCALING_FACTOR;
-
+    // Constants a and k as percentages scaled by SCALING_FACTOR
     public get a(): u256 {
-        return SafeMath.div(
-            SafeMath.mul(u256.fromU64(5), Quoter.SCALING_FACTOR),
-            u256.fromU64(100),
-        );
+        return u256.fromU64(5_000_000); // Represents 5.00%
     }
 
     public get k(): u256 {
-        return SafeMath.div(
-            SafeMath.mul(u256.fromU64(30), Quoter.SCALING_FACTOR),
-            u256.fromU64(100),
-        );
+        return u256.fromU64(5_000_000); // Represents 30.00%
     }
 
     public static pow(base: u256, exponent: u256): u256 {
@@ -39,57 +32,59 @@ export class Quoter {
     }
 
     public calculatePrice(P0: u256, EWMA_V: u256, EWMA_L: u256): u256 {
-        const adjustedEWMA_L = u256.lt(EWMA_L, Quoter.MIN_EWMA_L) ? Quoter.MIN_EWMA_L : EWMA_L;
+        if (EWMA_V.isZero()) {
+            return SafeMath.div(P0, Quoter.SCALING_FACTOR);
+        }
 
-        // Compute ratio using the common scaling factor
-        const ratio: u256 = SafeMath.div(
-            SafeMath.mul(EWMA_V, Quoter.SCALING_FACTOR),
-            adjustedEWMA_L,
-        );
+        const adjustedEWMA_L = u256.gt(EWMA_L, u256.Zero) ? EWMA_L : u256.One;
 
-        // Now that 'k' is scaled, adjust the calculation accordingly
-        const scaledAdjustment: u256 = SafeMath.div(
-            SafeMath.mul(this.k, ratio),
+        // Calculate the ratio using the existing SCALING_FACTOR
+        const ratio: u256 = //SafeMath.div(
+            SafeMath.div(SafeMath.mul(EWMA_V, Quoter.SCALING_FACTOR), adjustedEWMA_L);
+        //Quoter.SCALING_FACTOR_BTC,
+        //);
+
+        // Ensure ratio doesn't become zero
+        const adjustedRatio = u256.gt(ratio, u256.Zero) ? ratio : u256.One;
+
+        Blockchain.log(`Ratio: ${adjustedRatio}`);
+
+        // Calculate the scaled adjustment
+        const scaledAdjustment: u256 = SafeMath.add(
             Quoter.SCALING_FACTOR,
+            SafeMath.div(SafeMath.mul(this.k, adjustedRatio), Quoter.SCALING_FACTOR),
         );
 
-        // Compute adjusted price
+        // Calculate the adjusted price
         const adjustedPrice: u256 = SafeMath.div(
-            SafeMath.mul(P0, SafeMath.add(Quoter.SCALING_FACTOR, scaledAdjustment)),
+            SafeMath.mul(P0, scaledAdjustment),
             Quoter.SCALING_FACTOR,
-        );
-
-        // Compute inverse price
-        const priceInverse = SafeMath.div(
-            SafeMath.mul(Quoter.SCALING_FACTOR, Quoter.SCALING_FACTOR),
-            adjustedPrice,
         );
 
         Blockchain.log(
-            `Adjusted price: ${adjustedPrice} - Inverse price: ${priceInverse} (EWMA_V: ${EWMA_V}, EWMA_L: ${EWMA_L})`,
+            `Price: ${adjustedPrice} - scaledAdjustment: ${scaledAdjustment} (Ratio: ${ratio}, EWMA_V: ${EWMA_V}, EWMA_L: ${EWMA_L})`,
         );
 
-        return priceInverse;
+        return SafeMath.div(adjustedPrice, Quoter.SCALING_FACTOR);
     }
 
-    public updateEWMA(
-        currentValue: u256,
-        previousEWMA: u256,
-        alpha: u256,
-        blocksElapsed: u256,
-    ): u256 {
+    public updateEWMA(currentValue: u256, previousEWMA: u256, blocksElapsed: u256): u256 {
         if (blocksElapsed.isZero()) {
             return previousEWMA;
         }
 
-        const oneMinusAlpha: u256 = SafeMath.sub(Quoter.SCALING_FACTOR, alpha);
+        const oneMinusAlpha: u256 = SafeMath.sub(Quoter.SCALING_FACTOR, this.a);
+
+        // Compute the decay factor with proper scaling
         const decayFactor: u256 = Quoter.pow(oneMinusAlpha, blocksElapsed);
 
+        // Weighted previous EWMA with scaling
         const weightedPrevEWMA: u256 = SafeMath.div(
             SafeMath.mul(decayFactor, previousEWMA),
             Quoter.SCALING_FACTOR,
         );
 
+        // Weighted current value with scaling
         const weightedCurrentValue: u256 = SafeMath.div(
             SafeMath.mul(SafeMath.sub(Quoter.SCALING_FACTOR, decayFactor), currentValue),
             Quoter.SCALING_FACTOR,
