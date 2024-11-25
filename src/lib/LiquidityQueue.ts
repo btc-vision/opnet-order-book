@@ -40,8 +40,6 @@ export class LiquidityQueue {
     private readonly _totalReserves: StoredMapU256;
     private readonly _totalReserved: StoredMapU256;
 
-    private readonly ALPHA: u256 = Quoter.a;
-
     private readonly _lastUpdatedBlockEWMA: StoredU64;
     private readonly _quoteHistory: StoredU256Array;
 
@@ -130,11 +128,12 @@ export class LiquidityQueue {
     }
 
     public quote(): u256 {
-        return quoter.calculatePrice(this.p0, Quoter.k, this.ewmaV, this.ewmaL);
+        return quoter.calculatePrice(this.p0, this.ewmaV, this.ewmaL);
     }
 
     public estimateOutputTokens(satoshis: u256, currentPrice: u256): u256 {
-        return SafeMath.mul(satoshis, currentPrice);
+        // If 'satoshis' is in smallest units and 'currentPrice' is scaled, adjust accordingly
+        return SafeMath.div(SafeMath.mul(satoshis, currentPrice), Quoter.SCALING_FACTOR);
     }
 
     public addLiquidity(providerId: u256, amountIn: u128, receiver: string): void {
@@ -162,8 +161,10 @@ export class LiquidityQueue {
             this._queue.push(providerId);
         }
 
-        this.setBlockQuote();
+        // Update the EWMA of liquidity after adding liquidity
         this.updateEWMA_L();
+
+        this.setBlockQuote();
 
         const liquidityEvent = new LiquidityAddedEvent(provider.liquidity, receiver);
         Blockchain.emit(liquidityEvent);
@@ -224,8 +225,9 @@ export class LiquidityQueue {
 
         reservation.save();
 
+        // Update the EWMA of buy volume after the trade is executed
         this.updateEWMA_V(tokensReserved);
-        this.updateEWMA_L();
+        this.setBlockQuote();
 
         const liquidityReservedEvent = new LiquidityReserved(tokensReserved);
         Blockchain.emit(liquidityReservedEvent);
@@ -239,14 +241,49 @@ export class LiquidityQueue {
             this.lastUpdateBlockEWMA_V,
         );
 
+        // Scale currentBuyVolume
+        const scaledCurrentBuyVolume = SafeMath.mul(currentBuyVolume, Quoter.SCALING_FACTOR);
+
         this.ewmaV = quoter.updateEWMA(
-            currentBuyVolume,
+            scaledCurrentBuyVolume,
             this.ewmaV,
-            this.ALPHA,
+            quoter.a,
             u256.fromU64(blocksElapsed),
         );
 
         this.lastUpdateBlockEWMA_V = Blockchain.block.numberU64;
+    }
+
+    public updateEWMA_L(): void {
+        const blocksElapsed: u64 = SafeMath.sub64(
+            Blockchain.block.numberU64,
+            this.lastUpdateBlockEWMA_L,
+        );
+
+        const currentLiquidityU256: u256 = SafeMath.sub(this.liquidity, this.reservedLiquidity);
+
+        // Scale currentLiquidityU256
+        const scaledCurrentLiquidity = SafeMath.mul(currentLiquidityU256, Quoter.SCALING_FACTOR);
+
+        if (currentLiquidityU256.isZero()) {
+            // When liquidity is zero, adjust EWMA_L to decrease over time
+            const decayFactor: u256 = Quoter.pow(
+                Quoter.DECAY_RATE_PER_BLOCK,
+                u256.fromU64(blocksElapsed),
+            );
+
+            // Adjust ewmaL by applying the decay
+            this.ewmaL = SafeMath.div(SafeMath.mul(this.ewmaL, decayFactor), Quoter.SCALING_FACTOR);
+        } else {
+            this.ewmaL = quoter.updateEWMA(
+                scaledCurrentLiquidity,
+                this.ewmaL,
+                quoter.a,
+                u256.fromU64(blocksElapsed),
+            );
+        }
+
+        this.lastUpdateBlockEWMA_L = Blockchain.block.numberU64;
     }
 
     private setBlockQuote(): void {
@@ -258,38 +295,6 @@ export class LiquidityQueue {
 
         const blockNumberU32: u32 = <u32>Blockchain.block.numberU64;
         this._quoteHistory.set(blockNumberU32, this.quote());
-    }
-
-    private updateEWMA_L(): void {
-        const blocksElapsed: u64 = SafeMath.sub64(
-            Blockchain.block.numberU64,
-            this.lastUpdateBlockEWMA_L,
-        );
-
-        const currentLiquidityU256: u256 = SafeMath.sub(this.liquidity, this.reservedLiquidity);
-        if (currentLiquidityU256.isZero()) {
-            // When liquidity is zero, adjust EWMA_L to decrease over time
-            const scalingFactor: u256 = Quoter.getScalingFactor();
-
-            // Compute the decay over the elapsed blocks
-            const decayFactor: u256 = Quoter.pow(
-                Quoter.DECAY_RATE_PER_BLOCK,
-                u256.fromU64(blocksElapsed),
-            );
-
-            // Adjust ewmaL by applying the decay
-            this.ewmaL = SafeMath.div(SafeMath.mul(this.ewmaL, decayFactor), scalingFactor);
-        } else {
-            // Update ewmaL normally when liquidity is available
-            this.ewmaL = quoter.updateEWMA(
-                currentLiquidityU256,
-                this.ewmaL,
-                this.ALPHA,
-                u256.fromU64(blocksElapsed),
-            );
-        }
-
-        this.lastUpdateBlockEWMA_L = Blockchain.block.numberU64;
     }
 
     private updateTotalReserve(token: u256, amount: u256, increase: bool): void {

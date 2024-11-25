@@ -394,7 +394,7 @@ export class EWMA extends OP_NET {
      * @throws {Revert} If invalid parameters are provided (e.g., negative quantity, zero price).
      * @throws {Revert} If the requested quantity is less than the minimum trade size.
      */
-    private _getQuote(token: Address, satoshisIn: u256, simulateDecay: bool = true): BytesWriter {
+    private _getQuote(token: Address, satoshisIn: u256): BytesWriter {
         // Validate inputs
         if (token.empty() || token.equals(Blockchain.DEAD_ADDRESS)) {
             throw new Revert('Invalid token address');
@@ -404,66 +404,64 @@ export class EWMA extends OP_NET {
             throw new Revert('Requested amount is below minimum trade size');
         }
 
-        // Retrieve the liquidity queue for the token
         const queue: LiquidityQueue = this.getLiquidityQueue(token, this.addressToPointer(token));
 
-        let currentEWMA_V: u256;
-        let currentEWMA_L: u256;
+        // Simulate updating ewmaV and ewmaL to the current block without modifying the stored values
+        const blocksElapsed_V: u64 = SafeMath.sub64(
+            Blockchain.block.numberU64,
+            queue.lastUpdateBlockEWMA_V,
+        );
+        const blocksElapsed_L: u64 = SafeMath.sub64(
+            Blockchain.block.numberU64,
+            queue.lastUpdateBlockEWMA_L,
+        );
 
-        const SCALING_FACTOR: u256 = Quoter.getScalingFactor();
+        // Simulate ewmaV update with currentBuyVolume as zero (since no buy has occurred yet)
+        let simulatedEWMA_V: u256 = queue.ewmaV;
+        // currentBuyVolume is zero, so no need to scale it
+        simulatedEWMA_V = quoter.updateEWMA(
+            u256.Zero, // currentBuyVolume is zero
+            simulatedEWMA_V,
+            quoter.a,
+            u256.fromU64(blocksElapsed_V),
+        );
 
-        if (simulateDecay) {
-            // Simulate decay of EWMA values
-            // Retrieve current EWMA values and last update block numbers
-            const lastUpdateBlock_V: u64 = queue.lastUpdateBlockEWMA_V;
-            const lastUpdateBlock_L: u64 = queue.lastUpdateBlockEWMA_L;
-            const currentBlock: u64 = Blockchain.block.numberU64;
+        // Simulate ewmaL update
+        let simulatedEWMA_L: u256 = queue.ewmaL;
+        const currentLiquidityU256: u256 = SafeMath.sub(queue.liquidity, queue.reservedLiquidity);
 
-            // Calculate blocks elapsed since last EWMA_V and EWMA_L updates
-            const blocksElapsed_V: u64 = SafeMath.sub64(currentBlock, lastUpdateBlock_V);
-            const blocksElapsed_L: u64 = SafeMath.sub64(currentBlock, lastUpdateBlock_L);
+        if (currentLiquidityU256.isZero()) {
+            // Compute the decay over the elapsed blocks
+            const decayFactor: u256 = Quoter.pow(
+                Quoter.DECAY_RATE_PER_BLOCK,
+                u256.fromU64(blocksElapsed_L),
+            );
 
-            // Retrieve EWMA parameters
-            const alpha: u256 = Quoter.a; // α represented with implicit scaling
-            const oneMinusAlpha: u256 = SafeMath.sub(SCALING_FACTOR, alpha);
-
-            // Simulate updated EWMA_V
-            const decayFactor_V: u256 = Quoter.pow(oneMinusAlpha, u256.fromU64(blocksElapsed_V));
-            currentEWMA_V = SafeMath.div(SafeMath.mul(queue.ewmaV, decayFactor_V), SCALING_FACTOR);
-
-            // Simulate updated EWMA_L
-            const currentLiquidity: u256 = SafeMath.sub(queue.liquidity, queue.reservedLiquidity);
-            if (currentLiquidity.isZero()) {
-                const decayFactor_L: u256 = Quoter.pow(
-                    Quoter.DECAY_RATE_PER_BLOCK,
-                    u256.fromU64(blocksElapsed_L),
-                );
-
-                currentEWMA_L = SafeMath.div(
-                    SafeMath.mul(queue.ewmaL, decayFactor_L),
-                    SCALING_FACTOR,
-                );
-            } else {
-                // Update EWMA_L normally when liquidity is available
-                currentEWMA_L = quoter.updateEWMA(
-                    currentLiquidity,
-                    queue.ewmaL,
-                    alpha,
-                    u256.fromU64(blocksElapsed_L),
-                );
-            }
+            // Adjust ewmaL by applying the decay
+            simulatedEWMA_L = SafeMath.div(
+                SafeMath.mul(simulatedEWMA_L, decayFactor),
+                Quoter.SCALING_FACTOR,
+            );
         } else {
-            // Use current EWMA values without simulating decay
-            currentEWMA_V = queue.ewmaV;
-            currentEWMA_L = queue.ewmaL;
+            const scaledCurrentLiquidity = SafeMath.mul(
+                currentLiquidityU256,
+                Quoter.SCALING_FACTOR,
+            );
+
+            // Update ewmaL normally when liquidity is available
+            simulatedEWMA_L = quoter.updateEWMA(
+                scaledCurrentLiquidity,
+                simulatedEWMA_L,
+                quoter.a,
+                u256.fromU64(blocksElapsed_L),
+            );
         }
 
-        // Calculate the current price using the EWMA values
+        // Calculate the current price using the simulated EWMA values
         const currentPrice: u256 = quoter.calculatePrice(
             queue.p0,
-            Quoter.k,
-            currentEWMA_V,
-            currentEWMA_L,
+            simulatedEWMA_V,
+            simulatedEWMA_L,
         );
 
         // Ensure currentPrice is not zero
@@ -471,7 +469,11 @@ export class EWMA extends OP_NET {
             throw new Revert('Price is zero');
         }
 
-        let tokensOut: u256 = SafeMath.mul(satoshisIn, currentPrice);
+        // Calculate tokensOut using multiplication, adjusting for scaling
+        let tokensOut: u256 = SafeMath.div(
+            SafeMath.mul(satoshisIn, currentPrice),
+            Quoter.SCALING_FACTOR,
+        );
 
         // Retrieve available liquidity (total liquidity minus reserved liquidity)
         const availableLiquidity: u256 = SafeMath.sub(queue.liquidity, queue.reservedLiquidity);
@@ -481,18 +483,18 @@ export class EWMA extends OP_NET {
             tokensOut = availableLiquidity;
 
             // Recalculate requiredSatoshis = (tokensOut * SCALING_FACTOR) / currentPrice
-            const requiredSatoshis: u256 = SafeMath.div(tokensOut, currentPrice);
+            const requiredSatoshis: u256 = SafeMath.div(
+                SafeMath.mul(tokensOut, Quoter.SCALING_FACTOR),
+                currentPrice,
+            );
 
             // Serialize the estimated quantity and required satoshis
             const result = new BytesWriter(96);
             result.writeU256(tokensOut); // Tokens in smallest units
             result.writeU256(requiredSatoshis); // Satoshis required
-            result.writeU256(currentPrice); // Current price
+            result.writeU256(currentPrice); // Current price (tokens per satoshi)
             return result;
         }
-
-        // Else, tokensOut <= availableLiquidity
-        // The required satoshis are the same as satoshisIn
 
         // Serialize the estimated quantity and required satoshis
         const result = new BytesWriter(96);
