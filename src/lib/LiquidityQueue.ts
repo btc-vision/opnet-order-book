@@ -185,7 +185,6 @@ export class LiquidityQueue {
         }
 
         while (!tokensRemaining.isZero()) {
-            //u256.lt(tokensReserved, tokensOut)
             const provider: Provider | null = this.getNextProviderWithLiquidity();
             if (provider === null) {
                 break;
@@ -232,6 +231,7 @@ export class LiquidityQueue {
 
         // Update the EWMA of buy volume after the trade is executed
         this.updateEWMA_V(tokensReserved);
+        this.updateEWMA_L();
         this.setBlockQuote();
 
         const liquidityReservedEvent = new LiquidityReserved(tokensReserved);
