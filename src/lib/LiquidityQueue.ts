@@ -174,7 +174,6 @@ export class LiquidityQueue {
         const currentPrice: u256 = this.quote();
 
         let tokensOut: u256 = this.estimateOutputTokens(maximumAmount, currentPrice);
-
         let tokensReserved: u256 = u256.Zero;
 
         // Calculate total available liquidity
