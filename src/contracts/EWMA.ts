@@ -1,6 +1,5 @@
 import {
     Address,
-    AddressMemoryMap,
     Blockchain,
     BytesWriter,
     Calldata,
@@ -8,13 +7,11 @@ import {
     Revert,
     SafeMath,
     Selector,
-    StoredBoolean,
     TransactionOutput,
     TransferHelper,
 } from '@btc-vision/btc-runtime/runtime';
 import { OP_NET } from '@btc-vision/btc-runtime/runtime/contracts/OP_NET';
 import { u128, u256 } from 'as-bignum/assembly';
-import { FEE_CREDITS_POINTER, LIQUIDITY_LIMITATION } from '../lib/StoredPointers';
 import { FEE_COLLECT_SCRIPT_PUBKEY } from '../utils/OrderBookUtils';
 import { LiquidityQueue } from '../lib/LiquidityQueue';
 import { ripemd160 } from '@btc-vision/btc-runtime/runtime/env/global';
@@ -30,18 +27,7 @@ const TWO: u256 = u256.fromU32(2);
 export class EWMA extends OP_NET {
     private readonly minimumTradeSize: u256 = u256.fromU32(10_000); // The minimum trade size in satoshis.
     private readonly minimumAddLiquidityAmount: u128 = u128.fromU32(10); // At least 10 tokens.
-
-    private readonly reservationFeePerProvider: u256 = u256.fromU32(4_000); // The fixed fee rate per tick consumed.
-
-    private readonly feeCredits: AddressMemoryMap<u256> = new AddressMemoryMap<u256>(
-        FEE_CREDITS_POINTER,
-        u256.Zero,
-    );
-
-    private readonly liquidityLimitation: StoredBoolean = new StoredBoolean(
-        LIQUIDITY_LIMITATION,
-        false,
-    );
+    private readonly reservationFeePerProvider: u256 = u256.fromU32(10_000); // The fixed fee rate per tick consumed.
 
     public constructor() {
         super();
@@ -77,43 +63,11 @@ export class EWMA extends OP_NET {
                 return this.getReserve(calldata);
             case encodeSelector('getQuote'):
                 return this.getQuote(calldata);
-            case encodeSelector('creditsOf'):
-                return this.creditsOf(calldata);
-            case encodeSelector('limit'):
-                return this.limit(calldata);
             case encodeSelector('setQuote'): // aka enable trading
                 return this.setQuote(calldata);
             default:
                 return super.execute(method, calldata);
         }
-    }
-
-    private creditsOf(calldata: Calldata): BytesWriter {
-        const address: Address = calldata.readAddress();
-        const credits = this._creditsOf(address);
-
-        const writer = new BytesWriter(32);
-        writer.writeU256(credits);
-
-        return writer;
-    }
-
-    private _creditsOf(address: Address): u256 {
-        const hasAddress = this.feeCredits.has(address);
-        if (!hasAddress) return u256.Zero;
-
-        return this.feeCredits.get(address);
-    }
-
-    private limit(calldata: Calldata): BytesWriter {
-        this.onlyOwner(Blockchain.tx.sender);
-
-        this.liquidityLimitation.value = calldata.readBoolean();
-
-        const writer = new BytesWriter(1);
-        writer.writeBoolean(this.liquidityLimitation.value);
-
-        return writer;
     }
 
     private setQuote(calldata: Calldata): BytesWriter {
@@ -165,11 +119,10 @@ export class EWMA extends OP_NET {
 
     private reserve(calldata: Calldata): BytesWriter {
         const token: Address = calldata.readAddress();
-        const maximumAmount: u256 = calldata.readU256();
+        const maximumAmountIn: u256 = calldata.readU256();
         const minimumAmountOut: u256 = calldata.readU256();
-        const slippage: u16 = calldata.readU16();
 
-        return this._reserve(token, maximumAmount, minimumAmountOut, slippage);
+        return this._reserve(token, maximumAmountIn, minimumAmountOut);
     }
 
     private removeLiquidity(calldata: Calldata): BytesWriter {
@@ -305,7 +258,6 @@ export class EWMA extends OP_NET {
      * @param {Address} token - The token address for which the ticks are being reserved.
      * @param {u256} maximumAmountIn - The quantity of satoshis to be traded for the specified token.
      * @param {u256} minimumAmountOut - The minimum amount of tokens to receive for the trade.
-     * @param {u16} slippage - The maximum slippage percentage allowed for the trade. Note that this is a percentage value. (10000 = 100%)
      *
      * @returns {BytesWriter} -
      * This method must return the reservation id for the reserved ticks. The reservation id is a unique identifier for the reserved ticks.
@@ -327,12 +279,7 @@ export class EWMA extends OP_NET {
      * @throws {Error} If the requested quantity is less than the minimum trade size.
      * @throws {Error} If the user already has a pending reservation for the same token.
      */
-    private _reserve(
-        token: Address,
-        maximumAmountIn: u256,
-        minimumAmountOut: u256,
-        slippage: u16,
-    ): BytesWriter {
+    private _reserve(token: Address, maximumAmountIn: u256, minimumAmountOut: u256): BytesWriter {
         // Validate inputs
         if (token.empty() || token.equals(Blockchain.DEAD_ADDRESS)) {
             throw new Revert('ORDER_BOOK: Invalid token address');
@@ -348,20 +295,6 @@ export class EWMA extends OP_NET {
 
         if (minimumAmountOut.isZero()) {
             throw new Revert('ORDER_BOOK: Minimum amount out cannot be zero');
-        }
-
-        if (slippage > 10000) {
-            throw new Revert('ORDER_BOOK: Slippage cannot exceed 100%');
-        }
-
-        // Corrected slippage adjustment
-        const minimumAmountOutWithSlippage: u256 = SafeMath.div(
-            SafeMath.mul(minimumAmountOut, u256.fromU32(10000 - slippage)),
-            u256.fromU32(10000),
-        );
-
-        if (minimumAmountOutWithSlippage.isZero()) {
-            throw new Revert('ORDER_BOOK: Minimum amount out with slippage cannot be zero');
         }
 
         const buyer: Address = Blockchain.tx.sender;
@@ -461,10 +394,7 @@ export class EWMA extends OP_NET {
         }
 
         // Correct tokensOut calculation
-        let tokensOut: u256 = SafeMath.div(
-            SafeMath.mul(satoshisIn, currentPrice),
-            Quoter.SCALING_FACTOR,
-        );
+        let tokensOut: u256 = SafeMath.mul(satoshisIn, currentPrice);
 
         // Retrieve available liquidity (total liquidity minus reserved liquidity)
         const availableLiquidity: u256 = SafeMath.sub(queue.liquidity, queue.reservedLiquidity);
@@ -592,7 +522,7 @@ export class EWMA extends OP_NET {
 
         // Serialize the total tokens returned
         const result = new BytesWriter(32); // u256 is 32 bytes
-        result.writeU256(totalTokensReturned);
+        result.writeU128(totalTokensReturned.toU128());
         return result;
     }
 
