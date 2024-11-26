@@ -65,9 +65,26 @@ export class EWMA extends OP_NET {
                 return this.getQuote(calldata);
             case encodeSelector('setQuote'): // aka enable trading
                 return this.setQuote(calldata);
+            case encodeSelector('verifySignature'):
+                return this.verifySignature(calldata);
             default:
                 return super.execute(method, calldata);
         }
+    }
+
+    private verifySignature(calldata: Calldata): BytesWriter {
+        const signature = calldata.readBytesWithLength();
+        const message = calldata.readBytesWithLength();
+
+        const isValidSignature = Blockchain.verifySchnorrSignature(
+            Blockchain.tx.origin,
+            signature,
+            message,
+        );
+
+        const result = new BytesWriter(1);
+        result.writeBoolean(isValidSignature);
+        return result;
     }
 
     private setQuote(calldata: Calldata): BytesWriter {
