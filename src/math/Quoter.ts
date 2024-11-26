@@ -37,7 +37,6 @@ export class Quoter {
         }
 
         const adjustedEWMA_L = u256.gt(EWMA_L, u256.Zero) ? EWMA_L : u256.One;
-
         const ratio: u256 = SafeMath.div(
             SafeMath.mul(EWMA_V, Quoter.SCALING_FACTOR),
             adjustedEWMA_L,
@@ -49,27 +48,16 @@ export class Quoter {
 
         let scaledAdjustment: u256;
         if (u256.gt(factor, Quoter.SCALING_FACTOR)) {
-            // cap factor to 25% to prevent large price swings
-            //const cap: u256 = u256.fromU64(25_000_000);
-            //scaledAdjustment = SafeMath.add(Quoter.SCALING_FACTOR, cap);
-
-            //const cappedFactor = SafeMath.add(Quoter.SCALING_FACTOR, );
             scaledAdjustment = SafeMath.sub(Quoter.SCALING_FACTOR, u256.fromU64(40_000_000));
         } else {
             scaledAdjustment = SafeMath.sub(Quoter.SCALING_FACTOR, factor);
         }
 
         // Calculate the adjusted price
-        const adjustedPrice: u256 = SafeMath.div(
+        return SafeMath.div(
             SafeMath.div(SafeMath.mul(P0, scaledAdjustment), Quoter.SCALING_FACTOR),
             Quoter.SCALING_FACTOR,
         );
-
-        //Blockchain.log(
-        //    `Price: ${adjustedPrice} - scaledAdjustment: ${scaledAdjustment} (Ratio: ${ratio}, EWMA_V: ${EWMA_V}, EWMA_L: ${EWMA_L})`,
-        //);
-
-        return adjustedPrice; //SafeMath.min(, P0);
     }
 
     public updateEWMA(currentValue: u256, previousEWMA: u256, blocksElapsed: u256): u256 {
