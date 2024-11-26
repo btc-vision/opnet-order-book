@@ -26,6 +26,7 @@ export default tseslint.config(
             '@typescript-eslint/restrict-plus-operands': 'off',
             '@typescript-eslint/no-unnecessary-type-assertion': 'off',
             '@typescript-eslint/no-unsafe-call': 'off',
+            'no-loss-of-precision': 'off',
         },
     },
     {

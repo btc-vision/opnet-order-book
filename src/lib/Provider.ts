@@ -1,60 +1,111 @@
-import { u256 } from 'as-bignum/assembly';
-import { bytes32, BytesWriter, StoredU256 } from '@btc-vision/btc-runtime/runtime';
+import { u128, u256 } from 'as-bignum/assembly';
+import { Potential } from '@btc-vision/btc-runtime/runtime';
 import { AdvancedStoredString } from '../stored/AdvancedStoredString';
-import {
-    LIQUIDITY_PROVIDER_AVAILABLE,
-    LIQUIDITY_PROVIDER_NEXT,
-    LIQUIDITY_PROVIDER_PREVIOUS,
-    LIQUIDITY_PROVIDER_RESERVED,
-    PROVIDER_ADDRESS_POINTER,
-} from './StoredPointers';
-import { sha256 } from '../../../btc-runtime/runtime/env/global';
+import { UserLiquidity } from '../data-types/UserLiquidity';
+import { PROVIDER_ADDRESS_POINTER, PROVIDER_LIQUIDITY_POINTER } from './StoredPointers';
 
 export class Provider {
     public providerId: u256;
+    public indexedAt: u16 = 0;
 
-    public readonly amount: StoredU256;
-    public readonly reservedAmount: StoredU256;
+    private userLiquidity: UserLiquidity;
 
-    public readonly nextProviderId: StoredU256;
-    public readonly previousProviderId: StoredU256;
-
-    public readonly subPointer: u256;
-
-    private readonly _btcReceiver: AdvancedStoredString;
-
-    constructor(providerId: u256, tickId: u256) {
+    constructor(providerId: u256) {
         this.providerId = providerId;
 
-        this._btcReceiver = new AdvancedStoredString(PROVIDER_ADDRESS_POINTER, providerId);
-
-        const subPointer: u256 = Provider.getSubPointer(tickId, providerId);
-        this.subPointer = subPointer;
-
-        this.amount = new StoredU256(LIQUIDITY_PROVIDER_AVAILABLE, subPointer, u256.Zero);
-        this.reservedAmount = new StoredU256(LIQUIDITY_PROVIDER_RESERVED, subPointer, u256.Zero);
-        this.nextProviderId = new StoredU256(LIQUIDITY_PROVIDER_NEXT, subPointer, u256.Zero);
-        this.previousProviderId = new StoredU256(
-            LIQUIDITY_PROVIDER_PREVIOUS,
-            subPointer,
-            u256.Zero,
-        );
+        this.userLiquidity = new UserLiquidity(PROVIDER_LIQUIDITY_POINTER, providerId);
     }
 
+    public get liquidity(): u128 {
+        return this.userLiquidity.getLiquidityAmount();
+    }
+
+    public set liquidity(value: u128) {
+        this.userLiquidity.setLiquidityAmount(value);
+    }
+
+    public get reserved(): u128 {
+        return this.userLiquidity.getReservedAmount();
+    }
+
+    public set reserved(value: u128) {
+        this.userLiquidity.setReservedAmount(value);
+    }
+
+    private _btcReceiver: Potential<AdvancedStoredString> = null;
+
     public get btcReceiver(): string {
-        return this._btcReceiver.value;
+        return this.loaderReceiver.value;
     }
 
     public set btcReceiver(value: string) {
-        this._btcReceiver.value = value;
+        this.loaderReceiver.value = value;
     }
 
-    private static getSubPointer(tickId: u256, providerId: u256): u256 {
-        // Generate a unique storage pointer based on tickId and providerId
-        const writer = new BytesWriter(64);
-        writer.writeU256(tickId);
-        writer.writeU256(providerId);
-
-        return bytes32(sha256(writer.getBuffer()));
+    public get hasReservations(): bool {
+        return this.userLiquidity.getPendingReservationsFlag() === 1;
     }
+
+    public set hasReservations(value: bool) {
+        this.userLiquidity.setPendingReservationsFlag(value ? 1 : 0);
+    }
+
+    private get loaderReceiver(): AdvancedStoredString {
+        if (this._btcReceiver === null) {
+            const loader = new AdvancedStoredString(PROVIDER_ADDRESS_POINTER, this.providerId);
+            this._btcReceiver = loader;
+
+            return loader;
+        }
+
+        return this._btcReceiver as AdvancedStoredString;
+    }
+
+    public isActive(): bool {
+        return this.userLiquidity.getActiveFlag() === 1;
+    }
+
+    public setActive(value: bool): void {
+        this.userLiquidity.setActiveFlag(value ? 1 : 0);
+    }
+
+    public save(): void {
+        this.userLiquidity.save();
+    }
+}
+
+const cache: Array<Provider> = new Array<Provider>();
+
+function findProvider(id: u256): Provider | null {
+    for (let i: i32 = 0; i < cache.length; i++) {
+        if (u256.eq(cache[i].providerId, id)) {
+            return cache[i];
+        }
+    }
+
+    return null;
+}
+
+export function saveAllProviders(): void {
+    for (let i: i32 = 0; i < cache.length; i++) {
+        cache[i].save();
+    }
+}
+
+/**
+ * @function getProvider
+ * @description Retrieves a Provider using the u256 key. Creates and caches a new Provider if not found.
+ * @param {u256} providerId - The provider's u256 identifier.
+ * @returns {Provider} - The retrieved or newly created Provider.
+ */
+export function getProvider(providerId: u256): Provider {
+    let provider = findProvider(providerId);
+
+    if (provider === null) {
+        provider = new Provider(providerId);
+
+        cache.push(provider);
+    }
+
+    return provider;
 }
