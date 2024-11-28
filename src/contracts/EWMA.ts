@@ -150,10 +150,9 @@ export class EWMA extends OP_NET {
 
     private swap(calldata: Calldata): BytesWriter {
         const token: Address = calldata.readAddress();
-        const reservationId: u256 = calldata.readU256();
         const isSimulation: bool = calldata.readBoolean();
 
-        return this._swap(token, reservationId, isSimulation);
+        return this._swap(token, isSimulation);
     }
 
     private getReserve(calldata: Calldata): BytesWriter {
@@ -588,7 +587,7 @@ export class EWMA extends OP_NET {
      * @throws {Error} If the reservation is close to be expired and the swap is a simulation.
      * @throws {Error} If the buyer does not have enough BTC to complete the swap.
      */
-    private _swap(token: Address, reservationId: u256, isSimulation: bool): BytesWriter {
+    private _swap(token: Address, isSimulation: bool): BytesWriter {
         // Validate inputs
         if (token.empty() || token.equals(Blockchain.DEAD_ADDRESS)) {
             throw new Revert('Invalid token address');
