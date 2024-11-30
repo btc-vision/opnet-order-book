@@ -42,14 +42,6 @@ export class Provider {
         this.loaderReceiver.value = value;
     }
 
-    public get hasReservations(): bool {
-        return this.userLiquidity.getPendingReservationsFlag() === 1;
-    }
-
-    public set hasReservations(value: bool) {
-        this.userLiquidity.setPendingReservationsFlag(value ? 1 : 0);
-    }
-
     private get loaderReceiver(): AdvancedStoredString {
         if (this._btcReceiver === null) {
             const loader = new AdvancedStoredString(PROVIDER_ADDRESS_POINTER, this.providerId);
@@ -65,8 +57,18 @@ export class Provider {
         return this.userLiquidity.getActiveFlag() === 1;
     }
 
-    public setActive(value: bool): void {
+    public setActive(value: bool, priority: bool): void {
         this.userLiquidity.setActiveFlag(value ? 1 : 0);
+        this.userLiquidity.setPriorityFlag(priority ? 1 : 0);
+    }
+
+    public isPriority(): boolean {
+        return this.userLiquidity.getPriorityFlag();
+    }
+
+    public reset(): void {
+        this.userLiquidity.reset();
+        this.save();
     }
 
     public save(): void {

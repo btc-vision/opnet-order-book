@@ -26,7 +26,6 @@ const TWO: u256 = u256.fromU32(2);
 @final
 export class EWMA extends OP_NET {
     private readonly minimumTradeSize: u256 = u256.fromU32(10_000); // The minimum trade size in satoshis.
-    private readonly minimumAddLiquidityAmount: u128 = u128.fromU32(10); // At least 10 tokens.
     private readonly reservationFeePerProvider: u256 = u256.fromU32(10_000); // The fixed fee rate per tick consumed.
 
     public constructor() {
@@ -124,7 +123,8 @@ export class EWMA extends OP_NET {
         }
 
         const amountIn: u128 = calldata.readU128();
-        return this._addLiquidity(token, receiver, amountIn);
+        const priority: boolean = calldata.readBoolean();
+        return this._addLiquidity(token, receiver, amountIn, priority);
     }
 
     private getQuote(calldata: Calldata): BytesWriter {
@@ -183,6 +183,7 @@ export class EWMA extends OP_NET {
      * @param {Address} receiver - The address to which the bitcoins will be sent.
      * @param {u128} amountIn - The maximum amount of tokens to be added as liquidity.
      *
+     * @param priority
      * @returns {BytesWriter} -
      * Return true on success, revert on failure.
      *
@@ -195,7 +196,12 @@ export class EWMA extends OP_NET {
      * @throws {Error} If the token address is invalid or if the liquidity addition fails.
      * @throws {Error} If the user does not have enough tokens to add liquidity.
      */
-    private _addLiquidity(token: Address, receiver: string, amountIn: u128): BytesWriter {
+    private _addLiquidity(
+        token: Address,
+        receiver: string,
+        amountIn: u128,
+        priority: boolean,
+    ): BytesWriter {
         // Validate inputs
         if (token.empty() || token.equals(Blockchain.DEAD_ADDRESS)) {
             throw new Revert('Invalid token address');
@@ -205,15 +211,11 @@ export class EWMA extends OP_NET {
             throw new Revert('Amount in cannot be zero');
         }
 
-        if (u128.lt(amountIn, this.minimumAddLiquidityAmount)) {
-            throw new Revert('Amount in is less than the minimum add liquidity amount');
-        }
-
         const providerId = this.addressToPointerU256(Blockchain.tx.sender);
         const tokenId = this.addressToPointer(token);
 
         const queue = this.getLiquidityQueue(token, tokenId);
-        queue.addLiquidity(providerId, amountIn, receiver);
+        queue.addLiquidity(providerId, amountIn, receiver, priority);
         queue.save();
 
         // Return success
@@ -315,7 +317,7 @@ export class EWMA extends OP_NET {
 
         const buyer: Address = Blockchain.tx.sender;
         const queue = this.getLiquidityQueue(token, this.addressToPointer(token));
-        const reserved = queue.reserveLiquidity(buyer, maximumAmountIn);
+        const reserved = queue.reserveLiquidity(buyer, maximumAmountIn, minimumAmountOut);
         queue.save();
 
         const result = new BytesWriter(32);

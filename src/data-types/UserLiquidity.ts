@@ -20,6 +20,7 @@ export class UserLiquidity {
 
     // Internal fields representing the components of UserLiquidity
     private activeFlag: u8 = 0;
+    private priorityFlag: u8 = 0;
     private pendingReservationsFlag: u8 = 0;
     private liquidityAmount: u128 = u128.Zero;
     private reservedAmount: u128 = u128.Zero;
@@ -65,6 +66,22 @@ export class UserLiquidity {
         this.ensureValues();
         if (this.activeFlag != flag) {
             this.activeFlag = flag;
+            this.isChanged = true;
+        }
+    }
+
+    @inline
+    public getPriorityFlag(): boolean {
+        this.ensureValues();
+        return this.priorityFlag == 1;
+    }
+
+    @inline
+    public setPriorityFlag(flag: u8): void {
+        assert(flag == 0 || flag == 1, 'Invalid priority flag value');
+        this.ensureValues();
+        if (this.priorityFlag != flag) {
+            this.priorityFlag = flag;
             this.isChanged = true;
         }
     }
@@ -165,6 +182,7 @@ export class UserLiquidity {
     public reset(): void {
         this.activeFlag = 0;
         this.pendingReservationsFlag = 0;
+        this.priorityFlag = 0;
         this.liquidityAmount = u128.Zero;
         this.reservedAmount = u128.Zero;
         this.isChanged = true;
@@ -207,6 +225,7 @@ export class UserLiquidity {
 
             this.activeFlag = flag & 0b1;
             this.pendingReservationsFlag = (flag >> 1) & 0b1;
+            this.priorityFlag = (flag >> 2) & 0b1;
 
             // Unpack liquidityAmount (16 bytes, little endian)
             this.liquidityAmount = reader.readU128();
@@ -232,7 +251,8 @@ export class UserLiquidity {
     private packValues(): u256 {
         const writer = new BytesWriter(32);
 
-        const flag: u8 = (this.pendingReservationsFlag << 1) | this.activeFlag;
+        const flag: u8 =
+            (this.pendingReservationsFlag << 1) | this.activeFlag | (this.priorityFlag << 2);
         writer.writeU8(flag);
 
         // Pack liquidityAmount (16 bytes, little endian)
