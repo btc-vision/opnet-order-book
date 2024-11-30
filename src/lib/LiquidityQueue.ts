@@ -216,9 +216,11 @@ export class LiquidityQueue {
         }
 
         const quote = this.quote();
-        const liquidityInSatoshis: u256 = SafeMath.div(liquidityAmount.toU256(), quote);
-        //Blockchain.log(`Liquidity in satoshis: ${liquidityInSatoshis.toString()}`);
+        if (quote.isZero()) {
+            throw new Revert(`Quote is zero. Please set P0 if you are the owner of the token.`);
+        }
 
+        const liquidityInSatoshis: u256 = SafeMath.div(liquidityAmount.toU256(), quote);
         if (
             u256.lt(
                 liquidityInSatoshis,
@@ -374,7 +376,7 @@ export class LiquidityQueue {
             );
             c++;
 
-            // Update the provider's receiver address
+            // Emit reservation event containing the provider's BTC receiver address
             const liquidityReservedEvent = new LiquidityReserved(
                 provider.btcReceiver,
                 reserveAmount.toU128(),
