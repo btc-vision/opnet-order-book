@@ -483,8 +483,7 @@ export class LiquidityQueue {
         // We must update the EMWA of liquidity and volume if necessary.
         // We must be very efficient in the purging process. We must not iterate over the entire queue.
         // We must store all the reservations id to a list (block based) and iterate over them. Add this to reserveLiquidity, the array can be an u128 array since reservations are 128 bits.
-        // Note that the list should be by token and by block at the same time, so we must make the sha256 of the block by the token.
-        // We do not clear the list as it uses a lot of gas. We just set the length to zero.
+        // Note that the list should be by token and by block at the same time, so we must make the sha256 of the block by the token..
         // We need to load every reservation in the block and check if they are consumed or not, we can do reservation.isActive() to know if the reservation is still active.
         // We only load the reservations from x to x + y, where x is the last purged block. y is how many block to check maximum. y can not be bigger than RESERVATION_EXPIRE_AFTER. x + y can not be bigger than currentBlock - RESERVATION_EXPIRE_AFTER.
         // This allows us to skip all the blocks that we are sure had no reservations.
@@ -596,7 +595,7 @@ export class LiquidityQueue {
             }
 
             // Set reservation list length to zero
-            reservationList.setLength(0);
+            reservationList.deleteAll();
             reservationList.save();
         }
 
