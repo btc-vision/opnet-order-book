@@ -14,6 +14,7 @@ export const LIQUIDITY_EWMA_V_POINTER: u16 = Blockchain.nextPointer;
 export const LIQUIDITY_EWMA_L_POINTER: u16 = Blockchain.nextPointer;
 export const LIQUIDITY_EWMA_P0_POINTER: u16 = Blockchain.nextPointer;
 export const LIQUIDITY_EWMA_LAST_UPDATE_BLOCK_POINTER: u16 = Blockchain.nextPointer;
+export const RESERVATION_SETTINGS_POINTER: u16 = Blockchain.nextPointer;
 
 export const RESERVATION_INDEXES: u16 = Blockchain.nextPointer;
 export const RESERVATION_AMOUNTS: u16 = Blockchain.nextPointer;

@@ -22,6 +22,7 @@ import {
     LIQUIDITY_QUOTE_HISTORY_POINTER,
     LIQUIDITY_RESERVED_POINTER,
     RESERVATION_IDS_BY_BLOCK_POINTER,
+    RESERVATION_SETTINGS_POINTER,
     TOTAL_RESERVES_POINTER,
 } from './StoredPointers';
 import { StoredMapU256 } from '../stored/StoredMapU256';
@@ -54,6 +55,7 @@ export class LiquidityQueue {
     private readonly _totalReserved: StoredMapU256;
 
     private readonly _settingPurge: StoredU64;
+    private readonly _reservationSettings: StoredU64;
     private readonly _quoteHistory: StoredU256Array;
 
     private currentIndex: u64 = 0;
@@ -90,6 +92,8 @@ export class LiquidityQueue {
             tokenId,
             u256.Zero,
         );
+
+        this._reservationSettings = new StoredU64(RESERVATION_SETTINGS_POINTER, tokenId, u256.Zero);
 
         this.purgeReservationsAndRestoreProviders();
     }
@@ -150,19 +154,36 @@ export class LiquidityQueue {
         this._settingPurge.set(2, value);
     }
 
-    public get previousSwapStartingIndex(): u64 {
-        return this._settingPurge.get(3);
+    public get previousReservationStandardStartingIndex(): u64 {
+        return this._reservationSettings.get(0);
     }
 
-    public set previousSwapStartingIndex(value: u64) {
-        this._settingPurge.set(3, value);
+    public set previousReservationStandardStartingIndex(value: u64) {
+        this._reservationSettings.set(0, value);
+    }
+
+    public get previousReservationStartingIndex(): u64 {
+        return this._reservationSettings.get(1);
+    }
+
+    public set previousReservationStartingIndex(value: u64) {
+        this._reservationSettings.set(1, value);
     }
 
     public save(): void {
+        this.previousReservationStandardStartingIndex =
+            this.currentIndex === 0 ? this.currentIndex : this.currentIndex - 1;
+
+        this.previousReservationStartingIndex =
+            this.currentIndexPriority === 0
+                ? this.currentIndexPriority
+                : this.currentIndexPriority - 1;
+
         this._settingPurge.save();
         this._queue.save();
         this._priorityQueue.save();
         this._quoteHistory.save();
+        this._reservationSettings.save();
     }
 
     public quote(): u256 {
@@ -478,12 +499,14 @@ export class LiquidityQueue {
                 maxBlockToPurge = maxPossibleBlock;
             }
         } else {
+            this.onNoPurge();
             // Not enough blocks have passed to purge any reservations
             return;
         }
 
         // If no new blocks to purge
         if (lastPurgedBlock >= maxBlockToPurge) {
+            this.onNoPurge();
             return;
         }
 
@@ -580,11 +603,19 @@ export class LiquidityQueue {
             this.updateEWMA_L(); // temporally.
 
             // Save where to restart from.
-            this.previousSwapStartingIndex = 0;
+            this.previousReservationStartingIndex = 0;
+            this.previousReservationStandardStartingIndex = 0;
+        } else {
+            this.onNoPurge();
         }
 
         // Update lastPurgedBlock
         this.lastPurgedBlock = maxBlockToPurge;
+    }
+
+    private onNoPurge(): void {
+        this.currentIndex = this.previousReservationStandardStartingIndex;
+        this.currentIndexPriority = this.previousReservationStartingIndex;
     }
 
     private getReservationListForBlock(blockNumber: u64): StoredU128Array {
@@ -682,7 +713,6 @@ export class LiquidityQueue {
 
             const availableLiquidity: u128 = SafeMath.sub128(provider.liquidity, provider.reserved);
             if (!availableLiquidity.isZero()) {
-                this.previousSwapStartingIndex = v;
                 provider.indexedAt = v;
                 this.currentIndexPriority++;
 
@@ -720,10 +750,6 @@ export class LiquidityQueue {
 
         if (this.currentIndex === 0) {
             this.currentIndex = index;
-
-            if (this.previousSwapStartingIndex !== 0) {
-                this.currentIndex = this.previousSwapStartingIndex;
-            }
         }
 
         while (this.currentIndex < length) {
@@ -761,7 +787,6 @@ export class LiquidityQueue {
 
             const availableLiquidity: u128 = SafeMath.sub128(provider.liquidity, provider.reserved);
             if (!availableLiquidity.isZero()) {
-                this.previousSwapStartingIndex = v;
                 provider.indexedAt = v;
                 this.currentIndex++;
 
