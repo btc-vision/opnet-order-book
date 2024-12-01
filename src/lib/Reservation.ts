@@ -16,6 +16,7 @@ import {
 import { ripemd160 } from '@btc-vision/btc-runtime/runtime/env/global';
 import { u128, u256 } from 'as-bignum/assembly';
 import { UserReservation } from '../data-types/UserReservation';
+import { LiquidityQueue } from './LiquidityQueue';
 
 export class Reservation {
     public reservedIndexes: StoredU16Array;
@@ -46,6 +47,12 @@ export class Reservation {
             reservationId,
             u256.Zero,
         );
+    }
+
+    public get createdAt(): u64 {
+        const block: u64 = this.expirationBlock();
+
+        return block - LiquidityQueue.RESERVATION_EXPIRE_AFTER;
     }
 
     public static load(reservationId: u128): Reservation {

@@ -363,6 +363,7 @@ export class EWMA extends OP_NET {
             Blockchain.block.numberU64,
             queue.lastUpdateBlockEWMA_V,
         );
+
         const blocksElapsed_L: u64 = SafeMath.sub64(
             Blockchain.block.numberU64,
             queue.lastUpdateBlockEWMA_L,
@@ -444,42 +445,6 @@ export class EWMA extends OP_NET {
     }
 
     /**
-     * @function calculateDecayFactor
-     * @description
-     * Calculates the decay factor (1 - alpha)^blocksElapsed using exponentiation by squaring
-     * for efficiency.
-     *
-     * @param {u256} alpha - The smoothing factor, scaled by DECIMALS.
-     * @param {u256} DECIMALS - The scaling factor used for fixed-point arithmetic.
-     * @param {u256} blocksElapsed - The number of blocks elapsed since the last update.
-     *
-     * @returns {u256} - The decay factor, scaled by DECIMALS.
-     */
-    private calculateDecayFactor(alpha: u256, DECIMALS: u256, blocksElapsed: u256): u256 {
-        if (blocksElapsed.isZero()) {
-            return DECIMALS; // (1 - alpha)^0 = 1, scaled by DECIMALS
-        }
-
-        let decayFactor: u256 = DECIMALS; // Start with 1 * DECIMALS
-        const oneMinusAlpha: u256 = SafeMath.sub(DECIMALS, alpha);
-
-        let exponent: u256 = blocksElapsed;
-        let base: u256 = oneMinusAlpha;
-
-        while (u256.gt(exponent, u256.Zero)) {
-            if (u256.eq(u256.and(exponent, u256.One), u256.One)) {
-                decayFactor = SafeMath.mul(decayFactor, base);
-                decayFactor = SafeMath.div(decayFactor, DECIMALS);
-            }
-            base = SafeMath.mul(base, base);
-            base = SafeMath.div(base, DECIMALS);
-            exponent = SafeMath.div(exponent, TWO);
-        }
-
-        return decayFactor;
-    }
-
-    /**
      * @function _removeLiquidity
      * @description
      * Removes liquidity from the OP_NET order book system for a specified token.
@@ -497,7 +462,6 @@ export class EWMA extends OP_NET {
      * This should not revert and the user should be able to remove liquidity from other tick levels, if available.
      *
      * @param {Address} token - The address of the token from which liquidity is being removed.
-     * @param {u256[]} tickPositions - An array of tick positions (price levels) from which liquidity is being removed.
      *
      * @returns {BytesWriter} -
      * Returns a receipt confirming the removal of liquidity on success, reverts on failure.
@@ -531,11 +495,10 @@ export class EWMA extends OP_NET {
         }
 
         const totalTokensReturned = u256.Zero;
-        const seller = Blockchain.tx.sender;
 
         // Return tokens to the seller
         if (u256.gt(totalTokensReturned, u256.Zero)) {
-            TransferHelper.safeTransfer(token, seller, totalTokensReturned);
+            TransferHelper.safeTransfer(token, Blockchain.tx.sender, totalTokensReturned);
         }
 
         // Serialize the total tokens returned
@@ -562,7 +525,6 @@ export class EWMA extends OP_NET {
      * If the isSimulation flag is set to true, the system must know that this is a simulation and if the reservation are close from being expired, the system must revert the swap with a message that the reservation are close to be expired. (1 blocks before the expiration)
      *
      * @param {Address} token - The address of the token to swap for BTC.
-     * @param {u256} reservationId - The unique identifier for the reservation.
      * @param {bool} isSimulation - A flag indicating whether the swap is a simulation.
      *
      * @returns {BytesWriter} -
@@ -595,12 +557,13 @@ export class EWMA extends OP_NET {
             throw new Revert('Invalid token address');
         }
 
-        const tokenInDecimals: u256 = SafeMath.pow(
-            u256.fromU32(10),
-            u256.fromU32(<u32>this.getDecimals(token)),
-        );
+        //const tokenInDecimals: u256 = SafeMath.pow(
+        //    u256.fromU32(10),
+        //    u256.fromU32(<u32>this.getDecimals(token)),
+        //);
 
-        const buyer = Blockchain.tx.sender;
+        const queue: LiquidityQueue = this.getLiquidityQueue(token, this.addressToPointer(token));
+        queue.swap(Blockchain.tx.sender);
 
         // Emit SwapExecutedEvent
         //const swapEvent = new SwapExecutedEvent(buyer, totalBtcRequired, totalTokensAcquired);
