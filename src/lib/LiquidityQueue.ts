@@ -231,7 +231,7 @@ export class LiquidityQueue {
             )
         ) {
             throw new Revert(
-                `Liquidity value is too low, it must be at least worth ${LiquidityQueue.MINIMUM_LIQUIDITY_IN_SAT_VALUE_ADD_LIQUIDITY} satoshis.`,
+                `Liquidity value is too low, it must be at least worth ${LiquidityQueue.MINIMUM_LIQUIDITY_IN_SAT_VALUE_ADD_LIQUIDITY} satoshis. (was worth ${liquidityInSatoshis} sat)`,
             );
         }
 
@@ -343,7 +343,7 @@ export class LiquidityQueue {
             );
 
             if (satoshisSent.isZero()) {
-                Blockchain.log(`Expected amount ${satoshisSent} from ${provider.btcReceiver}`);
+                //Blockchain.log(`Expected amount ${satoshisSent} from ${provider.btcReceiver}`);
 
                 // Buyer didn't send any satoshis to this provider
                 this.restoreReservedLiquidityForProvider(provider, reservedAmount);
@@ -352,9 +352,9 @@ export class LiquidityQueue {
 
             // Adjust for scaling factor
             const tokensToTransfer = SafeMath.mul(satoshisSent, quoteAtReservation);
-            Blockchain.log(
-                `Expected amount: ${reservedAmount}, Actual amount: ${tokensToTransfer}`,
-            );
+            //Blockchain.log(
+            //    `Expected amount: ${reservedAmount}, Actual amount: ${tokensToTransfer}`,
+            //);
 
             // Cap the tokens to transfer to the reserved amount
             const reservedU256 = reservedAmount.toU256();
@@ -395,9 +395,9 @@ export class LiquidityQueue {
             );
         }
 
-        Blockchain.log(
-            `Total tokens transferred: ${totalTokensTransferred}, Total satoshis spent: ${totalSatoshisSpent}`,
-        );
+        //Blockchain.log(
+        //    `Total tokens transferred: ${totalTokensTransferred}, Total satoshis spent: ${totalSatoshisSpent}`,
+        //);
 
         TransferHelper.safeTransfer(this.token, buyer, totalTokensTransferred);
 
@@ -510,7 +510,7 @@ export class LiquidityQueue {
             // Emit reservation event containing the provider's BTC receiver address
             const liquidityReservedEvent = new LiquidityReserved(
                 provider.btcReceiver,
-                costInSatoshis.toU128()
+                costInSatoshis.toU128(),
             );
             Blockchain.emit(liquidityReservedEvent);
         }
