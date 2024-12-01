@@ -244,6 +244,8 @@ export class LiquidityQueue {
                     'Cannot change receiver address for provider when someone reserved your liquidity',
                 );
             }
+        } else {
+            provider.btcReceiver = receiver;
         }
 
         if (!provider.isActive()) {
@@ -508,7 +510,7 @@ export class LiquidityQueue {
             // Emit reservation event containing the provider's BTC receiver address
             const liquidityReservedEvent = new LiquidityReserved(
                 provider.btcReceiver,
-                reserveAmount.toU128(),
+                costInSatoshis.toU128()
             );
             Blockchain.emit(liquidityReservedEvent);
         }
