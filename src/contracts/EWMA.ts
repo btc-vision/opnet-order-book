@@ -1,5 +1,6 @@
 import {
     Address,
+    ADDRESS_BYTE_LENGTH,
     Blockchain,
     BytesWriter,
     Calldata,
@@ -14,11 +15,9 @@ import { OP_NET } from '@btc-vision/btc-runtime/runtime/contracts/OP_NET';
 import { u128, u256 } from 'as-bignum/assembly';
 import { FEE_COLLECT_SCRIPT_PUBKEY } from '../utils/OrderBookUtils';
 import { LiquidityQueue } from '../lib/LiquidityQueue';
-import { ripemd160 } from '@btc-vision/btc-runtime/runtime/env/global';
+import { ripemd160, sha256 } from '@btc-vision/btc-runtime/runtime/env/global';
 import { quoter, Quoter } from '../math/Quoter';
-import { saveAllProviders } from '../lib/Provider';
-
-const TWO: u256 = u256.fromU32(2);
+import { getProvider, saveAllProviders } from '../lib/Provider';
 
 /**
  * OrderBook contract for the OP_NET order book system.
@@ -26,7 +25,7 @@ const TWO: u256 = u256.fromU32(2);
 @final
 export class EWMA extends OP_NET {
     private readonly minimumTradeSize: u256 = u256.fromU32(10_000); // The minimum trade size in satoshis.
-    private readonly reservationFeePerProvider: u256 = u256.fromU32(10_000); // The fixed fee rate per tick consumed.
+    private readonly RESERVATION_BASE_FEE: u64 = 10_000; // The base fee for reservations in satoshis.
 
     public constructor() {
         super();
@@ -64,26 +63,39 @@ export class EWMA extends OP_NET {
                 return this.getQuote(calldata);
             case encodeSelector('setQuote'): // aka enable trading
                 return this.setQuote(calldata);
-            case encodeSelector('verifySignature'):
-                return this.verifySignature(calldata);
+            case encodeSelector('priorityQueueCost'): // aka enable trading
+                return this.getPriorityQueueCost(calldata);
+            case encodeSelector('getProviderDetails'):
+                return this.getProviderDetails(calldata);
             default:
                 return super.execute(method, calldata);
         }
     }
 
-    private verifySignature(calldata: Calldata): BytesWriter {
-        const signature = calldata.readBytesWithLength();
-        const message = calldata.readBytesWithLength();
+    private getProviderDetails(calldata: Calldata): BytesWriter {
+        const token = calldata.readAddress();
 
-        const isValidSignature = Blockchain.verifySchnorrSignature(
-            Blockchain.tx.origin,
-            signature,
-            message,
-        );
+        const providerId = this.addressToPointerU256(Blockchain.tx.sender, token);
+        const provider = getProvider(providerId);
 
-        const result = new BytesWriter(1);
-        result.writeBoolean(isValidSignature);
-        return result;
+        const writer = new BytesWriter(32);
+        writer.writeU128(provider.liquidity);
+        writer.writeU128(provider.reserved);
+        writer.writeStringWithLength(provider.btcReceiver);
+
+        return writer;
+    }
+
+    private getPriorityQueueCost(calldata: Calldata): BytesWriter {
+        const token = calldata.readAddress();
+
+        const queue = this.getLiquidityQueue(token, this.addressToPointer(token));
+        const cost = queue.getCostPriorityFee();
+
+        const writer = new BytesWriter(32);
+        writer.writeU128(cost);
+
+        return writer;
     }
 
     private setQuote(calldata: Calldata): BytesWriter {
@@ -211,7 +223,7 @@ export class EWMA extends OP_NET {
             throw new Revert('Amount in cannot be zero');
         }
 
-        const providerId = this.addressToPointerU256(Blockchain.tx.sender);
+        const providerId = this.addressToPointerU256(Blockchain.tx.sender, token);
         const tokenId = this.addressToPointer(token);
 
         const queue = this.getLiquidityQueue(token, tokenId);
@@ -228,8 +240,12 @@ export class EWMA extends OP_NET {
         return new LiquidityQueue(token, tokenId);
     }
 
-    private addressToPointerU256(address: Address): u256 {
-        return u256.fromBytes(address, true);
+    private addressToPointerU256(address: Address, token: Address): u256 {
+        const writer = new BytesWriter(ADDRESS_BYTE_LENGTH * 2);
+        writer.writeAddress(address);
+        writer.writeAddress(token);
+
+        return u256.fromBytes(sha256(writer.getBuffer()), true);
     }
 
     private addressToPointer(address: Address): Uint8Array {
@@ -313,6 +329,11 @@ export class EWMA extends OP_NET {
 
         if (minimumAmountOut.isZero()) {
             throw new Revert('ORDER_BOOK: Minimum amount out cannot be zero');
+        }
+
+        const totalFee = this.getTotalFeeCollected();
+        if (totalFee < this.RESERVATION_BASE_FEE) {
+            throw new Revert('ORDER_BOOK: Insufficient fees collected');
         }
 
         const buyer: Address = Blockchain.tx.sender;

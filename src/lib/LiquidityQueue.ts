@@ -594,6 +594,17 @@ export class LiquidityQueue {
         this.lastUpdateBlockEWMA_L = Blockchain.block.numberU64;
     }
 
+    public getCostPriorityFee(): u128 {
+        const length = this._priorityQueue.getLength();
+        const startingIndex = this._priorityQueue.startingIndex();
+        const realLength = length - startingIndex;
+
+        return SafeMath.mul128(
+            u128.fromU64(realLength),
+            u128.fromU64(LiquidityQueue.PRICE_PER_USER_IN_PRIORITY_QUEUE_BTC),
+        );
+    }
+
     private resetProvider(provider: Provider): void {
         if (!provider.liquidity.isZero()) {
             TransferHelper.safeTransfer(this.token, Address.dead(), provider.liquidity.toU256());
