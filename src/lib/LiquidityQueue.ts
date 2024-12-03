@@ -47,6 +47,8 @@ export class LiquidityQueue {
     public static PERCENT_TOKENS_FOR_PRIORITY_QUEUE: u128 = u128.fromU32(30); // 3%
     public static PERCENT_TOKENS_FOR_PRIORITY_FACTOR: u128 = u128.fromU32(1000); // 100%
 
+    public static MAX_RESERVATION_LIQUIDITY_PER_PROVIDER: u128 = u128.Max;
+
     public readonly tokenId: u256;
     private readonly _p0: StoredU256;
     private readonly _ewmaL: StoredU256;
@@ -308,7 +310,7 @@ export class LiquidityQueue {
             reservation.expirationBlock() - LiquidityQueue.RESERVATION_EXPIRE_AFTER ===
             Blockchain.block.numberU64
         ) {
-            throw new Revert('Too early..');
+            throw new Revert('Too early');
         }
 
         // Fetch the quote stored at the time of reservation
@@ -474,6 +476,7 @@ export class LiquidityQueue {
                 continue;
             }
 
+            // TODO: Make sure this works correctly, we can only reserve 15 bytes.
             let reserveAmount: u256 = SafeMath.min(
                 SafeMath.min(providerLiquidity, tokensRemaining),
                 MAX_RESERVATION_AMOUNT_PROVIDER.toU256(),
