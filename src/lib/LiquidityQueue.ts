@@ -304,6 +304,13 @@ export class LiquidityQueue {
             throw new Revert('No active reservation found for this address.');
         }
 
+        if (
+            reservation.expirationBlock() - LiquidityQueue.RESERVATION_EXPIRE_AFTER ===
+            Blockchain.block.numberU64
+        ) {
+            throw new Revert('Too early..');
+        }
+
         // Fetch the quote stored at the time of reservation
         const quoteAtReservation = this._quoteHistory.get(reservation.createdAt);
         if (quoteAtReservation.isZero()) {
