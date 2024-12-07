@@ -1,18 +1,12 @@
-import {
-    Address,
-    ADDRESS_BYTE_LENGTH,
-    BytesWriter,
-    NetEvent,
-} from '@btc-vision/btc-runtime/runtime';
+import { BytesWriter, NetEvent } from '@btc-vision/btc-runtime/runtime';
 import { u256 } from 'as-bignum/assembly';
 
 @final
 export class ReservationCreatedEvent extends NetEvent {
-    constructor(reservationId: u256, expectedAmountOut: u256, buyer: Address) {
-        const data: BytesWriter = new BytesWriter(32 + 32 + ADDRESS_BYTE_LENGTH);
-        data.writeU256(reservationId);
+    constructor(expectedAmountOut: u256, totalSatoshis: u256) {
+        const data: BytesWriter = new BytesWriter(32 + 32);
         data.writeU256(expectedAmountOut);
-        data.writeAddress(buyer);
+        data.writeU256(totalSatoshis);
 
         super('ReservationCreated', data);
     }

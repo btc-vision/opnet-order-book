@@ -1,5 +1,6 @@
 import {
     Address,
+    ADDRESS_BYTE_LENGTH,
     Blockchain,
     BytesWriter,
     Calldata,
@@ -10,15 +11,13 @@ import {
     TransactionOutput,
     TransferHelper,
 } from '@btc-vision/btc-runtime/runtime';
-import { OP_NET } from '@btc-vision/btc-runtime/runtime/contracts/OP_NET';
-import { u128, u256 } from 'as-bignum/assembly';
-import { FEE_COLLECT_SCRIPT_PUBKEY } from '../utils/OrderBookUtils';
-import { LiquidityQueue } from '../lib/LiquidityQueue';
-import { ripemd160 } from '@btc-vision/btc-runtime/runtime/env/global';
-import { quoter, Quoter } from '../math/Quoter';
-import { saveAllProviders } from '../lib/Provider';
-
-const TWO: u256 = u256.fromU32(2);
+import {OP_NET} from '@btc-vision/btc-runtime/runtime/contracts/OP_NET';
+import {u128, u256} from 'as-bignum/assembly';
+import {FEE_COLLECT_SCRIPT_PUBKEY} from '../utils/OrderBookUtils';
+import {LiquidityQueue} from '../lib/LiquidityQueue';
+import {ripemd160, sha256} from '@btc-vision/btc-runtime/runtime/env/global';
+import {quoter, Quoter} from '../math/Quoter';
+import {getProvider, saveAllProviders} from '../lib/Provider';
 
 /**
  * OrderBook contract for the OP_NET order book system.
@@ -26,8 +25,7 @@ const TWO: u256 = u256.fromU32(2);
 @final
 export class EWMA extends OP_NET {
     private readonly minimumTradeSize: u256 = u256.fromU32(10_000); // The minimum trade size in satoshis.
-    private readonly minimumAddLiquidityAmount: u128 = u128.fromU32(10); // At least 10 tokens.
-    private readonly reservationFeePerProvider: u256 = u256.fromU32(10_000); // The fixed fee rate per tick consumed.
+    private readonly RESERVATION_BASE_FEE: u64 = 10_000; // The base fee for reservations in satoshis.
 
     public constructor() {
         super();
@@ -65,26 +63,41 @@ export class EWMA extends OP_NET {
                 return this.getQuote(calldata);
             case encodeSelector('setQuote'): // aka enable trading
                 return this.setQuote(calldata);
-            case encodeSelector('verifySignature'):
-                return this.verifySignature(calldata);
+            case encodeSelector('priorityQueueCost'): // aka enable trading
+                return this.getPriorityQueueCost(calldata);
+            case encodeSelector('getProviderDetails'):
+                return this.getProviderDetails(calldata);
+            case encodeSelector('getEWMA'):
+                return this.getEWMA(calldata);
             default:
                 return super.execute(method, calldata);
         }
     }
 
-    private verifySignature(calldata: Calldata): BytesWriter {
-        const signature = calldata.readBytesWithLength();
-        const message = calldata.readBytesWithLength();
+    private getProviderDetails(calldata: Calldata): BytesWriter {
+        const token = calldata.readAddress();
 
-        const isValidSignature = Blockchain.verifySchnorrSignature(
-            Blockchain.tx.origin,
-            signature,
-            message,
-        );
+        const providerId = this.addressToPointerU256(Blockchain.tx.sender, token);
+        const provider = getProvider(providerId);
 
-        const result = new BytesWriter(1);
-        result.writeBoolean(isValidSignature);
-        return result;
+        const writer = new BytesWriter(32);
+        writer.writeU128(provider.liquidity);
+        writer.writeU128(provider.reserved);
+        writer.writeStringWithLength(provider.btcReceiver);
+
+        return writer;
+    }
+
+    private getPriorityQueueCost(calldata: Calldata): BytesWriter {
+        const token = calldata.readAddress();
+
+        const queue = this.getLiquidityQueue(token, this.addressToPointer(token));
+        const cost = queue.getCostPriorityFee();
+
+        const writer = new BytesWriter(32);
+        writer.writeU128(cost);
+
+        return writer;
     }
 
     private setQuote(calldata: Calldata): BytesWriter {
@@ -124,7 +137,19 @@ export class EWMA extends OP_NET {
         }
 
         const amountIn: u128 = calldata.readU128();
-        return this._addLiquidity(token, receiver, amountIn);
+        const priority: boolean = calldata.readBoolean();
+        return this._addLiquidity(token, receiver, amountIn, priority);
+    }
+
+    private getEWMA(calldata: Calldata): BytesWriter {
+        const token: Address = calldata.readAddress();
+        const ewma = this.getLiquidityQueue(token, this.addressToPointer(token));
+
+        const writer = new BytesWriter(64);
+        writer.writeU256(ewma.ewmaV);
+        writer.writeU256(ewma.ewmaL);
+
+        return writer;
     }
 
     private getQuote(calldata: Calldata): BytesWriter {
@@ -150,10 +175,9 @@ export class EWMA extends OP_NET {
 
     private swap(calldata: Calldata): BytesWriter {
         const token: Address = calldata.readAddress();
-        const reservationId: u256 = calldata.readU256();
         const isSimulation: bool = calldata.readBoolean();
 
-        return this._swap(token, reservationId, isSimulation);
+        return this._swap(token, isSimulation);
     }
 
     private getReserve(calldata: Calldata): BytesWriter {
@@ -184,6 +208,7 @@ export class EWMA extends OP_NET {
      * @param {Address} receiver - The address to which the bitcoins will be sent.
      * @param {u128} amountIn - The maximum amount of tokens to be added as liquidity.
      *
+     * @param priority
      * @returns {BytesWriter} -
      * Return true on success, revert on failure.
      *
@@ -196,7 +221,12 @@ export class EWMA extends OP_NET {
      * @throws {Error} If the token address is invalid or if the liquidity addition fails.
      * @throws {Error} If the user does not have enough tokens to add liquidity.
      */
-    private _addLiquidity(token: Address, receiver: string, amountIn: u128): BytesWriter {
+    private _addLiquidity(
+        token: Address,
+        receiver: string,
+        amountIn: u128,
+        priority: boolean,
+    ): BytesWriter {
         // Validate inputs
         if (token.empty() || token.equals(Blockchain.DEAD_ADDRESS)) {
             throw new Revert('Invalid token address');
@@ -206,15 +236,11 @@ export class EWMA extends OP_NET {
             throw new Revert('Amount in cannot be zero');
         }
 
-        if (u128.lt(amountIn, this.minimumAddLiquidityAmount)) {
-            throw new Revert('Amount in is less than the minimum add liquidity amount');
-        }
-
-        const providerId = this.addressToPointerU256(Blockchain.tx.sender);
+        const providerId = this.addressToPointerU256(Blockchain.tx.sender, token);
         const tokenId = this.addressToPointer(token);
 
         const queue = this.getLiquidityQueue(token, tokenId);
-        queue.addLiquidity(providerId, amountIn, receiver);
+        queue.addLiquidity(providerId, amountIn, receiver, priority);
         queue.save();
 
         // Return success
@@ -227,8 +253,12 @@ export class EWMA extends OP_NET {
         return new LiquidityQueue(token, tokenId);
     }
 
-    private addressToPointerU256(address: Address): u256 {
-        return u256.fromBytes(address, true);
+    private addressToPointerU256(address: Address, token: Address): u256 {
+        const writer = new BytesWriter(ADDRESS_BYTE_LENGTH * 2);
+        writer.writeAddress(address);
+        writer.writeAddress(token);
+
+        return u256.fromBytes(sha256(writer.getBuffer()), true);
     }
 
     private addressToPointer(address: Address): Uint8Array {
@@ -314,9 +344,14 @@ export class EWMA extends OP_NET {
             throw new Revert('ORDER_BOOK: Minimum amount out cannot be zero');
         }
 
+        const totalFee = this.getTotalFeeCollected();
+        if (totalFee < this.RESERVATION_BASE_FEE) {
+            throw new Revert('ORDER_BOOK: Insufficient fees collected');
+        }
+
         const buyer: Address = Blockchain.tx.sender;
         const queue = this.getLiquidityQueue(token, this.addressToPointer(token));
-        const reserved = queue.reserveLiquidity(buyer, maximumAmountIn);
+        const reserved = queue.reserveLiquidity(buyer, maximumAmountIn, minimumAmountOut);
         queue.save();
 
         const result = new BytesWriter(32);
@@ -362,6 +397,7 @@ export class EWMA extends OP_NET {
             Blockchain.block.numberU64,
             queue.lastUpdateBlockEWMA_V,
         );
+
         const blocksElapsed_L: u64 = SafeMath.sub64(
             Blockchain.block.numberU64,
             queue.lastUpdateBlockEWMA_L,
@@ -377,8 +413,8 @@ export class EWMA extends OP_NET {
 
         // Simulate ewmaL update
         let simulatedEWMA_L: u256 = queue.ewmaL;
-        const currentLiquidityU256: u256 = SafeMath.sub(queue.liquidity, queue.reservedLiquidity);
 
+        const currentLiquidityU256: u256 = SafeMath.sub(queue.liquidity, queue.reservedLiquidity);
         if (currentLiquidityU256.isZero()) {
             // Compute the decay over the elapsed blocks
             const oneMinusAlpha: u256 = SafeMath.sub(Quoter.SCALING_FACTOR, quoter.a);
@@ -443,42 +479,6 @@ export class EWMA extends OP_NET {
     }
 
     /**
-     * @function calculateDecayFactor
-     * @description
-     * Calculates the decay factor (1 - alpha)^blocksElapsed using exponentiation by squaring
-     * for efficiency.
-     *
-     * @param {u256} alpha - The smoothing factor, scaled by DECIMALS.
-     * @param {u256} DECIMALS - The scaling factor used for fixed-point arithmetic.
-     * @param {u256} blocksElapsed - The number of blocks elapsed since the last update.
-     *
-     * @returns {u256} - The decay factor, scaled by DECIMALS.
-     */
-    private calculateDecayFactor(alpha: u256, DECIMALS: u256, blocksElapsed: u256): u256 {
-        if (blocksElapsed.isZero()) {
-            return DECIMALS; // (1 - alpha)^0 = 1, scaled by DECIMALS
-        }
-
-        let decayFactor: u256 = DECIMALS; // Start with 1 * DECIMALS
-        const oneMinusAlpha: u256 = SafeMath.sub(DECIMALS, alpha);
-
-        let exponent: u256 = blocksElapsed;
-        let base: u256 = oneMinusAlpha;
-
-        while (u256.gt(exponent, u256.Zero)) {
-            if (u256.eq(u256.and(exponent, u256.One), u256.One)) {
-                decayFactor = SafeMath.mul(decayFactor, base);
-                decayFactor = SafeMath.div(decayFactor, DECIMALS);
-            }
-            base = SafeMath.mul(base, base);
-            base = SafeMath.div(base, DECIMALS);
-            exponent = SafeMath.div(exponent, TWO);
-        }
-
-        return decayFactor;
-    }
-
-    /**
      * @function _removeLiquidity
      * @description
      * Removes liquidity from the OP_NET order book system for a specified token.
@@ -496,7 +496,6 @@ export class EWMA extends OP_NET {
      * This should not revert and the user should be able to remove liquidity from other tick levels, if available.
      *
      * @param {Address} token - The address of the token from which liquidity is being removed.
-     * @param {u256[]} tickPositions - An array of tick positions (price levels) from which liquidity is being removed.
      *
      * @returns {BytesWriter} -
      * Returns a receipt confirming the removal of liquidity on success, reverts on failure.
@@ -530,11 +529,10 @@ export class EWMA extends OP_NET {
         }
 
         const totalTokensReturned = u256.Zero;
-        const seller = Blockchain.tx.sender;
 
         // Return tokens to the seller
         if (u256.gt(totalTokensReturned, u256.Zero)) {
-            TransferHelper.safeTransfer(token, seller, totalTokensReturned);
+            TransferHelper.safeTransfer(token, Blockchain.tx.sender, totalTokensReturned);
         }
 
         // Serialize the total tokens returned
@@ -561,7 +559,6 @@ export class EWMA extends OP_NET {
      * If the isSimulation flag is set to true, the system must know that this is a simulation and if the reservation are close from being expired, the system must revert the swap with a message that the reservation are close to be expired. (1 blocks before the expiration)
      *
      * @param {Address} token - The address of the token to swap for BTC.
-     * @param {u256} reservationId - The unique identifier for the reservation.
      * @param {bool} isSimulation - A flag indicating whether the swap is a simulation.
      *
      * @returns {BytesWriter} -
@@ -588,18 +585,15 @@ export class EWMA extends OP_NET {
      * @throws {Error} If the reservation is close to be expired and the swap is a simulation.
      * @throws {Error} If the buyer does not have enough BTC to complete the swap.
      */
-    private _swap(token: Address, reservationId: u256, isSimulation: bool): BytesWriter {
+    private _swap(token: Address, isSimulation: bool): BytesWriter {
         // Validate inputs
         if (token.empty() || token.equals(Blockchain.DEAD_ADDRESS)) {
             throw new Revert('Invalid token address');
         }
 
-        const tokenInDecimals: u256 = SafeMath.pow(
-            u256.fromU32(10),
-            u256.fromU32(<u32>this.getDecimals(token)),
-        );
-
-        const buyer = Blockchain.tx.sender;
+        const queue: LiquidityQueue = this.getLiquidityQueue(token, this.addressToPointer(token));
+        queue.swap(Blockchain.tx.sender);
+        queue.save();
 
         // Emit SwapExecutedEvent
         //const swapEvent = new SwapExecutedEvent(buyer, totalBtcRequired, totalTokensAcquired);

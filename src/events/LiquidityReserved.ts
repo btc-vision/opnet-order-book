@@ -1,11 +1,12 @@
 import { BytesWriter, NetEvent } from '@btc-vision/btc-runtime/runtime';
-import { u256 } from 'as-bignum/assembly';
+import { u128 } from 'as-bignum/assembly';
 
 @final
 export class LiquidityReserved extends NetEvent {
-    constructor(amount: u256) {
-        const data: BytesWriter = new BytesWriter(32);
-        data.writeU256(amount);
+    constructor(depositAddress: string, amount: u128) {
+        const data: BytesWriter = new BytesWriter(16 + depositAddress.length + 2);
+        data.writeStringWithLength(depositAddress);
+        data.writeU128(amount);
 
         super('LiquidityReserved', data);
     }

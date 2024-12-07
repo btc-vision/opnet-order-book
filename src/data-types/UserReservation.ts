@@ -138,7 +138,7 @@ export class UserReservation {
     private ensureValues(): void {
         if (!this.isLoaded) {
             const storedU256: u256 = Blockchain.getStorageAt(this.u256Pointer, u256.Zero);
-            const reader = new BytesReader(storedU256.toUint8Array());
+            const reader = new BytesReader(storedU256.toUint8Array(true));
 
             // Unpack expirationBlock (8 bytes, little endian)
             this.expirationBlock = reader.readU64();
@@ -166,10 +166,6 @@ export class UserReservation {
         // Pack startingIndex (8 bytes, little endian)
         writer.writeU64(this.startingIndex);
 
-        // Fill the remaining bytes with zeros (16 bytes)
-        const zeros = new Uint8Array(16);
-        writer.writeBytes(zeros);
-
-        return u256.fromBytes(writer.getBuffer());
+        return u256.fromBytes(writer.getBuffer(), true);
     }
 }

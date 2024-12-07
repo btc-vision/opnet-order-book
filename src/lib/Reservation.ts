@@ -3,26 +3,38 @@ import {
     ADDRESS_BYTE_LENGTH,
     Blockchain,
     BytesWriter,
+    StoredBooleanArray,
     StoredU128Array,
     StoredU16Array,
 } from '@btc-vision/btc-runtime/runtime';
-import { RESERVATION_AMOUNTS, RESERVATION_ID_POINTER, RESERVATION_INDEXES } from './StoredPointers';
+import {
+    RESERVATION_AMOUNTS,
+    RESERVATION_ID_POINTER,
+    RESERVATION_INDEXES,
+    RESERVATION_PRIORITY,
+} from './StoredPointers';
 import { ripemd160 } from '@btc-vision/btc-runtime/runtime/env/global';
 import { u128, u256 } from 'as-bignum/assembly';
 import { UserReservation } from '../data-types/UserReservation';
+import { LiquidityQueue } from './LiquidityQueue';
 
 export class Reservation {
     public reservedIndexes: StoredU16Array;
     public reservedValues: StoredU128Array;
+    public reservedPriority: StoredBooleanArray;
+
     public reservationId: u128;
 
-    private userReservation: UserReservation;
+    public userReservation: UserReservation;
 
     public constructor(
-        public readonly token: Address,
-        public readonly owner: Address,
+        token: Address,
+        owner: Address,
+        reservationId: Uint8Array = new Uint8Array(0),
     ) {
-        const reservationId = Reservation.generateId(token, owner);
+        if (reservationId.length == 0) {
+            reservationId = Reservation.generateId(token, owner);
+        }
 
         const reservation = u128.fromBytes(reservationId, true);
         this.userReservation = new UserReservation(RESERVATION_ID_POINTER, reservation.toU256());
@@ -30,6 +42,21 @@ export class Reservation {
 
         this.reservedIndexes = new StoredU16Array(RESERVATION_INDEXES, reservationId, u256.Zero);
         this.reservedValues = new StoredU128Array(RESERVATION_AMOUNTS, reservationId, u256.Zero);
+        this.reservedPriority = new StoredBooleanArray(
+            RESERVATION_PRIORITY,
+            reservationId,
+            u256.Zero,
+        );
+    }
+
+    public get createdAt(): u64 {
+        const block: u64 = this.expirationBlock();
+
+        return block - LiquidityQueue.RESERVATION_EXPIRE_AFTER;
+    }
+
+    public static load(reservationId: u128): Reservation {
+        return new Reservation(Address.dead(), Address.dead(), reservationId.toUint8Array(true));
     }
 
     public static generateId(token: Address, owner: Address): Uint8Array {
@@ -48,32 +75,47 @@ export class Reservation {
         this.userReservation.save();
         this.reservedIndexes.save();
         this.reservedValues.save();
+        this.reservedPriority.save();
     }
 
     public expired(): bool {
-        return Blockchain.block.numberU64 < this.userReservation.getExpirationBlock();
+        return Blockchain.block.numberU64 > this.userReservation.getExpirationBlock();
     }
 
-    public setExpirationBlock(block: u64, setStartingIndex: u64): void {
+    public setExpirationBlock(block: u64): void {
         this.userReservation.setExpirationBlock(block);
-        this.userReservation.setStartingIndex(setStartingIndex);
+    }
+
+    public isActive(): bool {
+        return this.userReservation.getExpirationBlock() > 0;
     }
 
     public valid(): bool {
         return !this.expired() && this.reservedIndexes.getLength() > 0;
     }
 
+    public expirationBlock(): u64 {
+        return this.userReservation.getExpirationBlock();
+    }
+
     public delete(): void {
         this.reservedIndexes.reset();
         this.reservedValues.reset();
+        this.reservedPriority.reset();
 
         this.userReservation.setExpirationBlock(0);
-        this.userReservation.setStartingIndex(0);
+
+        this.save();
     }
 
-    public reserveAtIndex(index: u16, amount: u128): void {
+    public reserveAtIndex(index: u16, amount: u128, priority: boolean): void {
         this.reservedIndexes.push(index);
         this.reservedValues.push(amount);
+        this.reservedPriority.push(priority);
+    }
+
+    public getReservedPriority(): bool[] {
+        return this.reservedPriority.getAll(0, this.reservedPriority.getLength());
     }
 
     public getReservedIndexes(): u16[] {
@@ -81,6 +123,6 @@ export class Reservation {
     }
 
     public getReservedValues(): u128[] {
-        return this.reservedValues.getAll(0, this.reservedValues.getLength());
+        return this.reservedValues.getAll(0, this.reservedValues.getLength() as u32);
     }
 }
