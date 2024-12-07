@@ -11,13 +11,13 @@ import {
     TransactionOutput,
     TransferHelper,
 } from '@btc-vision/btc-runtime/runtime';
-import { OP_NET } from '@btc-vision/btc-runtime/runtime/contracts/OP_NET';
-import { u128, u256 } from 'as-bignum/assembly';
-import { FEE_COLLECT_SCRIPT_PUBKEY } from '../utils/OrderBookUtils';
-import { LiquidityQueue } from '../lib/LiquidityQueue';
-import { ripemd160, sha256 } from '@btc-vision/btc-runtime/runtime/env/global';
-import { quoter, Quoter } from '../math/Quoter';
-import { getProvider, saveAllProviders } from '../lib/Provider';
+import {OP_NET} from '@btc-vision/btc-runtime/runtime/contracts/OP_NET';
+import {u128, u256} from 'as-bignum/assembly';
+import {FEE_COLLECT_SCRIPT_PUBKEY} from '../utils/OrderBookUtils';
+import {LiquidityQueue} from '../lib/LiquidityQueue';
+import {ripemd160, sha256} from '@btc-vision/btc-runtime/runtime/env/global';
+import {quoter, Quoter} from '../math/Quoter';
+import {getProvider, saveAllProviders} from '../lib/Provider';
 
 /**
  * OrderBook contract for the OP_NET order book system.
@@ -67,6 +67,8 @@ export class EWMA extends OP_NET {
                 return this.getPriorityQueueCost(calldata);
             case encodeSelector('getProviderDetails'):
                 return this.getProviderDetails(calldata);
+            case encodeSelector('getEWMA'):
+                return this.getEWMA(calldata);
             default:
                 return super.execute(method, calldata);
         }
@@ -137,6 +139,17 @@ export class EWMA extends OP_NET {
         const amountIn: u128 = calldata.readU128();
         const priority: boolean = calldata.readBoolean();
         return this._addLiquidity(token, receiver, amountIn, priority);
+    }
+
+    private getEWMA(calldata: Calldata): BytesWriter {
+        const token: Address = calldata.readAddress();
+        const ewma = this.getLiquidityQueue(token, this.addressToPointer(token));
+
+        const writer = new BytesWriter(64);
+        writer.writeU256(ewma.ewmaV);
+        writer.writeU256(ewma.ewmaL);
+
+        return writer;
     }
 
     private getQuote(calldata: Calldata): BytesWriter {
@@ -578,13 +591,9 @@ export class EWMA extends OP_NET {
             throw new Revert('Invalid token address');
         }
 
-        //const tokenInDecimals: u256 = SafeMath.pow(
-        //    u256.fromU32(10),
-        //    u256.fromU32(<u32>this.getDecimals(token)),
-        //);
-
         const queue: LiquidityQueue = this.getLiquidityQueue(token, this.addressToPointer(token));
         queue.swap(Blockchain.tx.sender);
+        queue.save();
 
         // Emit SwapExecutedEvent
         //const swapEvent = new SwapExecutedEvent(buyer, totalBtcRequired, totalTokensAcquired);

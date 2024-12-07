@@ -786,9 +786,9 @@ export class LiquidityQueue {
                             LiquidityQueue.STRICT_MINIMUM_PROVIDER_RESERVATION_AMOUNT.toU128(),
                         )
                     ) {
-                        Blockchain.log(
-                            `Provider ${providerId} has less than minimum liquidity. Destroying provider. (priority: ${priority}, index: ${providerIndex})`,
-                        );
+                        //Blockchain.log(
+                        //    `Provider ${providerId} has less than minimum liquidity. Destroying provider. (priority: ${priority}, index: ${providerIndex})`,
+                        //);
                         // Dust is not reserved, so we must subtract it from the total reserves.
                         if (provider.isPriority()) {
                             this._priorityQueue.delete(provider.indexedAt);
