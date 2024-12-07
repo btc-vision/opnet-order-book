@@ -400,8 +400,8 @@ export class EWMA extends OP_NET {
 
         // Simulate ewmaL update
         let simulatedEWMA_L: u256 = queue.ewmaL;
-        const currentLiquidityU256: u256 = SafeMath.sub(queue.liquidity, queue.reservedLiquidity);
 
+        const currentLiquidityU256: u256 = SafeMath.sub(queue.liquidity, queue.reservedLiquidity);
         if (currentLiquidityU256.isZero()) {
             // Compute the decay over the elapsed blocks
             const oneMinusAlpha: u256 = SafeMath.sub(Quoter.SCALING_FACTOR, quoter.a);
