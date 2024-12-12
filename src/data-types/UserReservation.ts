@@ -1,4 +1,4 @@
-import { u256 } from 'as-bignum/assembly';
+import { u256 } from '@btc-vision/as-bignum/assembly';
 import {
     Blockchain,
     BytesReader,
@@ -14,6 +14,7 @@ export class UserReservation {
     // Internal fields representing the components of UserReservation
     private expirationBlock: u64 = 0;
     private startingIndex: u64 = 0;
+    private priorityIndex: u64 = 0;
 
     // Flags to manage state
     private isLoaded: bool = false;
@@ -74,12 +75,19 @@ export class UserReservation {
      * @method setStartingIndex
      * @description Sets the starting index.
      * @param {u64} index - The starting index to set.
+     * @param priority
      */
     @inline
-    public setStartingIndex(index: u64): void {
+    public setStartingIndex(index: u64, priority: u64): void {
         this.ensureValues();
+
         if (this.startingIndex != index) {
             this.startingIndex = index;
+            this.isChanged = true;
+        }
+
+        if (this.priorityIndex != priority) {
+            this.priorityIndex = priority;
             this.isChanged = true;
         }
     }
@@ -146,6 +154,9 @@ export class UserReservation {
             // Unpack startingIndex (8 bytes, little endian)
             this.startingIndex = reader.readU64();
 
+            // Unpack priorityIndex (8 bytes, little endian)
+            this.priorityIndex = reader.readU64();
+
             // Skip remaining bytes (if any)
             this.isLoaded = true;
         }
@@ -165,6 +176,9 @@ export class UserReservation {
 
         // Pack startingIndex (8 bytes, little endian)
         writer.writeU64(this.startingIndex);
+
+        // Pack priorityIndex (8 bytes, little endian)
+        writer.writeU64(this.priorityIndex);
 
         return u256.fromBytes(writer.getBuffer(), true);
     }

@@ -1,4 +1,4 @@
-import { u128, u256 } from 'as-bignum/assembly';
+import { u128, u256 } from '@btc-vision/as-bignum/assembly';
 import {
     Blockchain,
     BytesReader,

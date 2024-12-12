@@ -12,7 +12,7 @@ import {
     TransactionOutput,
     TransferHelper,
 } from '@btc-vision/btc-runtime/runtime';
-import { u128, u256 } from 'as-bignum/assembly';
+import { u128, u256 } from '@btc-vision/as-bignum/assembly';
 import {
     LIQUIDITY_EWMA_L_POINTER,
     LIQUIDITY_EWMA_LAST_UPDATE_BLOCK_POINTER,
@@ -333,7 +333,7 @@ export class LiquidityQueue {
         let totalSatoshisSpent: u256 = u256.Zero;
 
         for (let i = 0; i < reservedIndexes.length; i++) {
-            const providerIndex = reservedIndexes[i];
+            const providerIndex: u64 = reservedIndexes[i];
             const reservedAmount = reservedValues[i]; // u128
             const priority = reservedPriority[i];
 
@@ -341,6 +341,8 @@ export class LiquidityQueue {
             const providerId = priority
                 ? this._priorityQueue.get(providerIndex)
                 : this._queue.get(providerIndex);
+
+            if (providerId.isZero()) throw new Revert(`Invalid provider at index ${providerIndex}`);
 
             const provider = getProvider(providerId);
             provider.indexedAt = providerIndex;
@@ -352,7 +354,7 @@ export class LiquidityQueue {
             );
 
             if (satoshisSent.isZero()) {
-                //Blockchain.log(`Expected amount ${satoshisSent} from ${provider.btcReceiver}`);
+                Blockchain.log(`Expected amount ${satoshisSent} from ${provider.btcReceiver}`);
 
                 // Buyer didn't send any satoshis to this provider
                 this.restoreReservedLiquidityForProvider(provider, reservedAmount);
@@ -375,6 +377,10 @@ export class LiquidityQueue {
 
             // Update provider's reserved and liquidity amounts
             const tokensToTransferU128 = tokensToTransferCapped.toU128();
+            //Blockchain.log(
+            //    `(${provider.indexedAt}) Transferring ${tokensToTransferU128} tokens to ${buyer}, ${provider.btcReceiver} spent ${satoshisSent} satoshis, provider ${provider.btcReceiver} reserved ${provider.reserved} liquidity ${provider.liquidity}`,
+            //);
+
             provider.reserved = SafeMath.sub128(provider.reserved, tokensToTransferU128);
             provider.liquidity = SafeMath.sub128(provider.liquidity, tokensToTransferU128);
 
@@ -439,6 +445,10 @@ export class LiquidityQueue {
         let tokensReserved: u256 = u256.Zero;
         let satSpent: u256 = u256.Zero;
         let tokensRemaining: u256 = SafeMath.mul(maximumAmountIn, currentPrice);
+
+        //Blockchain.log(
+        //    `Current price: ${currentPrice}, Maximum amount in: ${maximumAmountIn}, Tokens remaining: ${tokensRemaining}`,
+        //);
 
         const totalAvailableLiquidity: u256 = SafeMath.sub(this.liquidity, this.reservedLiquidity);
         if (u256.lt(totalAvailableLiquidity, tokensRemaining)) {
@@ -511,7 +521,7 @@ export class LiquidityQueue {
 
             // Add reservation to the reservation list
             reservation.reserveAtIndex(
-                provider.indexedAt,
+                <u16>provider.indexedAt, // TODO: Change this to a u32 array instead of u16. and add checks.
                 reserveAmount.toU128(),
                 provider.isPriority(),
             );
@@ -586,13 +596,12 @@ export class LiquidityQueue {
 
         if (currentLiquidityU256.isZero()) {
             // When liquidity is zero, adjust EWMA_L to decrease over time
-            const decayFactor: u256 = Quoter.pow(
-                Quoter.DECAY_RATE_PER_BLOCK,
-                u256.fromU64(blocksElapsed),
-            );
-
+            //const decayFactor: u256 = Quoter.pow(
+            //    Quoter.DECAY_RATE_PER_BLOCK,
+            //    u256.fromU64(blocksElapsed),
+            //);
             // Adjust ewmaL by applying the decay
-            this.ewmaL = SafeMath.div(SafeMath.mul(this.ewmaL, decayFactor), Quoter.SCALING_FACTOR);
+            //this.ewmaL = u256.One; //SafeMath.div(SafeMath.mul(this.ewmaL, decayFactor), Quoter.SCALING_FACTOR);
         } else {
             this.ewmaL = quoter.updateEWMA(
                 currentLiquidityU256,
@@ -621,9 +630,9 @@ export class LiquidityQueue {
         }
 
         if (provider.isPriority()) {
-            this._priorityQueue.delete(provider.indexedAt);
+            this._priorityQueue.delete(provider.indexedAt + this._priorityQueue.startingIndex());
         } else {
-            this._queue.delete(provider.indexedAt);
+            this._queue.delete(provider.indexedAt + this._priorityQueue.startingIndex());
         }
 
         provider.reset();
@@ -760,7 +769,7 @@ export class LiquidityQueue {
                 const reservedPriority = reservation.getReservedPriority();
 
                 for (let j = 0; j < reservedIndexes.length; j++) {
-                    const providerIndex = reservedIndexes[j];
+                    const providerIndex = reservedIndexes[i];
                     const reservedAmount = reservedValues[j];
                     const priority = reservedPriority[j];
 
@@ -791,9 +800,9 @@ export class LiquidityQueue {
                         //);
                         // Dust is not reserved, so we must subtract it from the total reserves.
                         if (provider.isPriority()) {
-                            this._priorityQueue.delete(provider.indexedAt);
+                            this._priorityQueue.delete(providerIndex);
                         } else {
-                            this._queue.delete(provider.indexedAt);
+                            this._queue.delete(providerIndex);
                         }
 
                         // Destroy the provider
@@ -910,21 +919,22 @@ export class LiquidityQueue {
             //    `Priority queue length: ${length}, index: ${index}, i: ${this.currentIndexPriority}`,
             //);
 
-            const difference: u64 = this.currentIndexPriority - index;
+            //const difference: u64 = this.currentIndexPriority - index;
 
             // Ensure the difference fits within a u16 to prevent overflow
-            if (difference > <u64>u32.MAX_VALUE) {
-                throw new Revert('Index difference exceeds u16.MAX_VALUE');
-            }
+            //if (difference > <u64>u32.MAX_VALUE) {
+            //    throw new Revert('Index difference exceeds u16.MAX_VALUE');
+            //}
 
-            const v: u16 = <u16>difference;
+            //const v: u16 = <u16>difference;
 
             // Additional check to ensure that casting did not wrap around
-            if (v === u16.MAX_VALUE && difference !== <u64>u16.MAX_VALUE) {
-                throw new Revert('Index overflow detected');
-            }
+            //if (v === u16.MAX_VALUE && difference !== <u64>u16.MAX_VALUE) {
+            //    throw new Revert('Index overflow detected');
+            //}
 
-            providerId = this._priorityQueue.get(this.currentIndexPriority);
+            const i: u64 = this.currentIndexPriority;
+            providerId = this._priorityQueue.get(i);
             if (providerId === u256.Zero) {
                 this.currentIndexPriority++;
                 continue;
@@ -944,7 +954,7 @@ export class LiquidityQueue {
 
             const availableLiquidity: u128 = SafeMath.sub128(provider.liquidity, provider.reserved);
             if (!availableLiquidity.isZero()) {
-                provider.indexedAt = v;
+                provider.indexedAt = i;
                 this.currentIndexPriority++;
 
                 return provider;
@@ -984,21 +994,23 @@ export class LiquidityQueue {
         }
 
         while (this.currentIndex < length) {
-            const difference: u64 = this.currentIndex - index;
+            //const difference: u64 = this.currentIndex - index;
 
             // Ensure the difference fits within a u16 to prevent overflow
-            if (difference > <u64>u32.MAX_VALUE) {
-                throw new Revert('Index difference exceeds u16.MAX_VALUE');
-            }
+            //if (difference > <u64>u32.MAX_VALUE) {
+            //    throw new Revert('Index difference exceeds u16.MAX_VALUE');
+            //}
 
-            const v: u16 = <u16>difference;
+            //const v: u16 = <u16>difference;
 
             // Additional check to ensure that casting did not wrap around
-            if (v === u16.MAX_VALUE && difference !== <u64>u16.MAX_VALUE) {
-                throw new Revert('Index overflow detected');
-            }
+            //if (v === u16.MAX_VALUE && difference !== <u64>u16.MAX_VALUE) {
+            //    throw new Revert('Index overflow detected');
+            //}
 
-            providerId = this._queue.get(this.currentIndex);
+            const i: u64 = this.currentIndex;
+            providerId = this._queue.get(i);
+
             if (providerId === u256.Zero) {
                 this.currentIndex++;
                 continue;
@@ -1018,7 +1030,7 @@ export class LiquidityQueue {
 
             const availableLiquidity: u128 = SafeMath.sub128(provider.liquidity, provider.reserved);
             if (!availableLiquidity.isZero()) {
-                provider.indexedAt = v;
+                provider.indexedAt = i; //v;
                 this.currentIndex++;
 
                 return provider;

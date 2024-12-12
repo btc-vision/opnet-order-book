@@ -1,14 +1,13 @@
-import { u256 } from 'as-bignum/assembly';
+import { u256 } from '@btc-vision/as-bignum/assembly';
 import { SafeMath } from '@btc-vision/btc-runtime/runtime';
 
 export class Quoter {
     public static readonly SCALING_FACTOR: u256 = u256.fromU64(100_000_000);
-    public static readonly DECAY_RATE_PER_BLOCK: u256 = u256.fromU64(99_000_000);
     public static readonly BLOCK_RATE: u256 = u256.fromU64(4);
 
     // Constants a and k as percentages scaled by SCALING_FACTOR
     public get a(): u256 {
-        return u256.fromU64(5_000_000); // Represents 5.00%
+        return u256.fromU64(12_000_000); // Represents 5.00%
     }
 
     public get k(): u256 {
@@ -48,7 +47,8 @@ export class Quoter {
 
         let scaledAdjustment: u256;
         if (u256.gt(factor, Quoter.SCALING_FACTOR)) {
-            scaledAdjustment = SafeMath.sub(Quoter.SCALING_FACTOR, u256.fromU64(40_000_000));
+            const mod = SafeMath.mod(factor, Quoter.SCALING_FACTOR);
+            scaledAdjustment = SafeMath.sub(Quoter.SCALING_FACTOR, mod); //u256.fromU64(30_000_000));
         } else {
             scaledAdjustment = SafeMath.sub(Quoter.SCALING_FACTOR, factor);
         }
@@ -66,13 +66,11 @@ export class Quoter {
         }
 
         const oneMinusAlpha: u256 = SafeMath.sub(Quoter.SCALING_FACTOR, this.a);
-
         const b: u256 = blocksElapsed.isZero()
             ? blocksElapsed
             : SafeMath.add(SafeMath.div(blocksElapsed, Quoter.BLOCK_RATE), u256.One);
 
         const decayFactor: u256 = SafeMath.min(Quoter.pow(oneMinusAlpha, b), Quoter.SCALING_FACTOR);
-
         const weightedPrevEWMA: u256 = SafeMath.div(
             SafeMath.mul(decayFactor, previousEWMA),
             Quoter.SCALING_FACTOR,

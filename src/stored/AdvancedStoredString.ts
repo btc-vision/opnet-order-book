@@ -1,4 +1,4 @@
-import { u256 } from 'as-bignum/assembly';
+import { u256 } from '@btc-vision/as-bignum/assembly';
 import { Blockchain, BytesWriter, encodePointer, SafeMath } from '@btc-vision/btc-runtime/runtime';
 
 @final
