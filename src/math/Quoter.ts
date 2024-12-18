@@ -7,11 +7,11 @@ export class Quoter {
 
     // Constants a and k as percentages scaled by SCALING_FACTOR
     public get a(): u256 {
-        return u256.fromU64(12_000_000); // Represents 5.00%
+        return u256.fromU64(12_000_000);
     }
 
     public get k(): u256 {
-        return u256.fromU64(80_000_000); // Represents 50.00%
+        return u256.fromU64(80_000_000);
     }
 
     public static pow(base: u256, exponent: u256): u256 {
@@ -47,6 +47,7 @@ export class Quoter {
 
         let scaledAdjustment: u256;
         if (u256.gt(factor, Quoter.SCALING_FACTOR)) {
+            // TODO: Handle this case correctly. This is a temporary fix.
             const mod = SafeMath.mod(factor, Quoter.SCALING_FACTOR);
             scaledAdjustment = SafeMath.sub(Quoter.SCALING_FACTOR, mod); //u256.fromU64(30_000_000));
         } else {
