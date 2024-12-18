@@ -1,5 +1,12 @@
-import { Blockchain, BytesWriter, encodePointer, SafeMath } from '@btc-vision/btc-runtime/runtime';
-import { u256 } from 'as-bignum/assembly';
+import { u256 } from '@btc-vision/as-bignum/assembly';
+import {
+    Blockchain,
+    BytesWriter,
+    encodePointer,
+    SafeMath,
+    U16_BYTE_LENGTH,
+    U256_BYTE_LENGTH,
+} from '@btc-vision/btc-runtime/runtime';
 
 /**
  * StoredArray<T> implementation using u256 as elements.
@@ -65,7 +72,7 @@ export class StoredArray<T> {
      * @returns The storage pointer as u256.
      */
     private getItemPointer(index: u256): u256 {
-        const writer = new BytesWriter(32 + 32);
+        const writer = new BytesWriter(U256_BYTE_LENGTH * 2);
         writer.writeU256(this.subPointer);
         writer.writeU256(index);
 
@@ -95,7 +102,7 @@ export class StoredArray<T> {
      * @returns The storage pointer as u256.
      */
     private getLengthPointer(): u256 {
-        const writer = new BytesWriter(2 + 32);
+        const writer = new BytesWriter(U16_BYTE_LENGTH + U256_BYTE_LENGTH);
         writer.writeU16(this.pointer);
         writer.writeU256(this.subPointer);
 

@@ -4,7 +4,7 @@
 
 The goal is to create a native Bitcoin swap contract, similar to an order book but with some twists. Since we cannot let
 people decide at what price they wish to sell their tokens for—because this would be too costly—we need to implement a
-system akin to Uniswap V3 with a significant modification: **OP\_NET contracts cannot hold bitcoins**. This means we
+system akin to Uniswap V3 with a significant modification: **OP_NET contracts cannot hold bitcoins**. This means we
 only have access to one side of the reserve, which is the token being traded.
 
 To address this limitation, the contract must be able to **track buy pressure to set the price accordingly**. The buy
@@ -77,7 +77,7 @@ We adjust the EWMA calculation for liquidity to account for periods with and wit
 
 - **When Liquidity Is Available:**
 
-  We use the standard EWMA update formula:
+    We use the standard EWMA update formula:
 
 ```math
 \text{EWMA}_L(t) = \alpha \times L(t) + (1 - \alpha) \times \text{EWMA}_L(t - 1)
@@ -90,7 +90,7 @@ Where:
 
 - **When Liquidity Is Zero:**
 
-  We apply the decay factor to the previous $\text{EWMA}_L$:
+    We apply the decay factor to the previous $\text{EWMA}_L$:
 
 ```math
 \text{EWMA}_L(t) = \text{EWMA}_L(t - 1) \times d
@@ -158,7 +158,7 @@ reaching zero, we enforce a **minimum liquidity threshold**.
 
 ## **Swap Reservation Process**
 
-Due to the inability of OP\_NET contracts to revert bitcoin transactions, we use a **two-block process** for swaps:
+Due to the inability of OP_NET contracts to revert bitcoin transactions, we use a **two-block process** for swaps:
 
 1. **Reservation Transaction:** The buyer makes a reservation to swap bitcoin for tokens.
 2. **Completion Transaction:** The buyer sends bitcoin directly to the liquidity providers' addresses as per the
@@ -168,6 +168,7 @@ Due to the inability of OP\_NET contracts to revert bitcoin transactions, we use
 
 - **Reservation ID (u256):** A unique identifier storing reservation parameters.
 - **Structure:**
+
     - **Expiration Block Number:** Current block number plus 5 blocks.
     - **Start and End Indices:** Indicate the range of liquidity providers involved.
     - **Total Reserved Amount:** Original amount before dust removal.
@@ -193,7 +194,7 @@ Due to the inability of OP\_NET contracts to revert bitcoin transactions, we use
 Below is an example of the modified `Quoter` class, incorporating the adjustments to handle periods without liquidity:
 
 ```typescript
-import { u256 } from 'as-bignum/assembly';
+import { u256 } from '@btc-vision/as-bignum/assembly';
 import { SafeMath } from '../../../btc-runtime/runtime';
 
 export class Quoter {

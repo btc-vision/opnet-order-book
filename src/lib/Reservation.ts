@@ -1,3 +1,4 @@
+import { u128, u256 } from '@btc-vision/as-bignum/assembly';
 import {
     Address,
     ADDRESS_BYTE_LENGTH,
@@ -7,16 +8,15 @@ import {
     StoredU128Array,
     StoredU16Array,
 } from '@btc-vision/btc-runtime/runtime';
+import { ripemd160 } from '@btc-vision/btc-runtime/runtime/env/global';
+import { UserReservation } from '../data-types/UserReservation';
+import { LiquidityQueue } from './LiquidityQueue';
 import {
     RESERVATION_AMOUNTS,
     RESERVATION_ID_POINTER,
     RESERVATION_INDEXES,
     RESERVATION_PRIORITY,
 } from './StoredPointers';
-import { ripemd160 } from '@btc-vision/btc-runtime/runtime/env/global';
-import { u128, u256 } from 'as-bignum/assembly';
-import { UserReservation } from '../data-types/UserReservation';
-import { LiquidityQueue } from './LiquidityQueue';
 
 export class Reservation {
     public reservedIndexes: StoredU16Array;

@@ -1,23 +1,27 @@
+import { u128, u256 } from '@btc-vision/as-bignum/assembly';
 import {
     Address,
     ADDRESS_BYTE_LENGTH,
     Blockchain,
+    BOOLEAN_BYTE_LENGTH,
     BytesWriter,
     Calldata,
     encodeSelector,
     Revert,
     SafeMath,
     Selector,
+    SELECTOR_BYTE_LENGTH,
     TransactionOutput,
     TransferHelper,
+    U128_BYTE_LENGTH,
+    U256_BYTE_LENGTH,
 } from '@btc-vision/btc-runtime/runtime';
-import {OP_NET} from '@btc-vision/btc-runtime/runtime/contracts/OP_NET';
-import {u128, u256} from 'as-bignum/assembly';
-import {FEE_COLLECT_SCRIPT_PUBKEY} from '../utils/OrderBookUtils';
-import {LiquidityQueue} from '../lib/LiquidityQueue';
-import {ripemd160, sha256} from '@btc-vision/btc-runtime/runtime/env/global';
-import {quoter, Quoter} from '../math/Quoter';
-import {getProvider, saveAllProviders} from '../lib/Provider';
+import { OP_NET } from '@btc-vision/btc-runtime/runtime/contracts/OP_NET';
+import { ripemd160, sha256 } from '@btc-vision/btc-runtime/runtime/env/global';
+import { LiquidityQueue } from '../lib/LiquidityQueue';
+import { getProvider, saveAllProviders } from '../lib/Provider';
+import { quoter, Quoter } from '../math/Quoter';
+import { FEE_COLLECT_SCRIPT_PUBKEY } from '../utils/OrderBookUtils';
 
 /**
  * OrderBook contract for the OP_NET order book system.
@@ -94,7 +98,7 @@ export class EWMA extends OP_NET {
         const queue = this.getLiquidityQueue(token, this.addressToPointer(token));
         const cost = queue.getCostPriorityFee();
 
-        const writer = new BytesWriter(32);
+        const writer = new BytesWriter(U128_BYTE_LENGTH);
         writer.writeU128(cost);
 
         return writer;
@@ -117,7 +121,7 @@ export class EWMA extends OP_NET {
         queue.p0 = quote;
         queue.save();
 
-        const writer = new BytesWriter(1);
+        const writer = new BytesWriter(BOOLEAN_BYTE_LENGTH);
         writer.writeBoolean(true);
 
         return writer;
@@ -145,7 +149,7 @@ export class EWMA extends OP_NET {
         const token: Address = calldata.readAddress();
         const ewma = this.getLiquidityQueue(token, this.addressToPointer(token));
 
-        const writer = new BytesWriter(64);
+        const writer = new BytesWriter(U256_BYTE_LENGTH * 2);
         writer.writeU256(ewma.ewmaV);
         writer.writeU256(ewma.ewmaL);
 
@@ -244,7 +248,7 @@ export class EWMA extends OP_NET {
         queue.save();
 
         // Return success
-        const result = new BytesWriter(1);
+        const result = new BytesWriter(BOOLEAN_BYTE_LENGTH);
         result.writeBoolean(true);
         return result;
     }
@@ -354,7 +358,7 @@ export class EWMA extends OP_NET {
         const reserved = queue.reserveLiquidity(buyer, maximumAmountIn, minimumAmountOut);
         queue.save();
 
-        const result = new BytesWriter(32);
+        const result = new BytesWriter(U256_BYTE_LENGTH);
         result.writeU256(reserved);
         return result;
     }
@@ -471,7 +475,7 @@ export class EWMA extends OP_NET {
         }
 
         // Serialize the estimated quantity and required satoshis
-        const result = new BytesWriter(96);
+        const result = new BytesWriter(U256_BYTE_LENGTH * 3);
         result.writeU256(tokensOut); // Tokens in smallest units
         result.writeU256(requiredSatoshis); // Satoshis required
         result.writeU256(currentPrice); // Current price
@@ -536,7 +540,7 @@ export class EWMA extends OP_NET {
         }
 
         // Serialize the total tokens returned
-        const result = new BytesWriter(32); // u256 is 32 bytes
+        const result = new BytesWriter(U128_BYTE_LENGTH); // u256 is 32 bytes
         result.writeU128(totalTokensReturned.toU128());
         return result;
     }
@@ -600,7 +604,7 @@ export class EWMA extends OP_NET {
         //this.emitEvent(swapEvent);
 
         // Return success
-        const result = new BytesWriter(1);
+        const result = new BytesWriter(BOOLEAN_BYTE_LENGTH);
         result.writeBoolean(true);
         return result;
     }
@@ -628,14 +632,14 @@ export class EWMA extends OP_NET {
 
         const queue = this.getLiquidityQueue(token, this.addressToPointer(token));
 
-        const result = new BytesWriter(64); // u256 is 32 bytes
+        const result = new BytesWriter(U256_BYTE_LENGTH * 2); // u256 is 32 bytes
         result.writeU256(queue.liquidity);
         result.writeU256(queue.reservedLiquidity);
         return result;
     }
 
     private getDecimals(token: Address): u8 {
-        const calldata = new BytesWriter(4);
+        const calldata = new BytesWriter(SELECTOR_BYTE_LENGTH);
         calldata.writeSelector(EWMA.DECIMAL_SELECTOR);
 
         const response = Blockchain.call(token, calldata);
@@ -643,7 +647,7 @@ export class EWMA extends OP_NET {
     }
 
     private getOwner(token: Address): Address {
-        const calldata = new BytesWriter(4);
+        const calldata = new BytesWriter(SELECTOR_BYTE_LENGTH);
         calldata.writeSelector(EWMA.OWNER_SELECTOR);
 
         const response = Blockchain.call(token, calldata);
