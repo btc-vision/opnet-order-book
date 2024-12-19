@@ -1,10 +1,11 @@
-import { u128, u256 } from 'as-bignum/assembly';
+import { u128, u256 } from '@btc-vision/as-bignum/assembly';
 import {
     Blockchain,
     BytesReader,
     BytesWriter,
     encodePointer,
     MemorySlotPointer,
+    U256_BYTE_LENGTH,
 } from '@btc-vision/btc-runtime/runtime';
 
 const bytes = new Uint8Array(15);
@@ -38,7 +39,7 @@ export class UserLiquidity {
         public pointer: u16,
         public subPointer: MemorySlotPointer,
     ) {
-        const writer = new BytesWriter(32);
+        const writer = new BytesWriter(U256_BYTE_LENGTH);
         writer.writeU256(subPointer);
 
         this.u256Pointer = encodePointer(pointer, writer.getBuffer());

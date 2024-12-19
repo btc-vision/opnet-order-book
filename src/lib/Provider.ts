@@ -1,4 +1,4 @@
-import { u128, u256 } from 'as-bignum/assembly';
+import { u128, u256 } from '@btc-vision/as-bignum/assembly';
 import { Potential } from '@btc-vision/btc-runtime/runtime';
 import { AdvancedStoredString } from '../stored/AdvancedStoredString';
 import { UserLiquidity } from '../data-types/UserLiquidity';
@@ -6,7 +6,7 @@ import { PROVIDER_ADDRESS_POINTER, PROVIDER_LIQUIDITY_POINTER } from './StoredPo
 
 export class Provider {
     public providerId: u256;
-    public indexedAt: u16 = 0;
+    public indexedAt: u64 = 0;
 
     private userLiquidity: UserLiquidity;
 

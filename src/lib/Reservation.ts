@@ -14,7 +14,7 @@ import {
     RESERVATION_PRIORITY,
 } from './StoredPointers';
 import { ripemd160 } from '@btc-vision/btc-runtime/runtime/env/global';
-import { u128, u256 } from 'as-bignum/assembly';
+import { u128, u256 } from '@btc-vision/as-bignum/assembly';
 import { UserReservation } from '../data-types/UserReservation';
 import { LiquidityQueue } from './LiquidityQueue';
 
@@ -88,6 +88,10 @@ export class Reservation {
 
     public isActive(): bool {
         return this.userReservation.getExpirationBlock() > 0;
+    }
+
+    public setStartingIndex(normal: u64, priority: u64): void {
+        this.userReservation.setStartingIndex(normal, priority);
     }
 
     public valid(): bool {

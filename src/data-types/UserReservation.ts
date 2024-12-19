@@ -1,10 +1,12 @@
-import { u256 } from 'as-bignum/assembly';
+import { u256 } from '@btc-vision/as-bignum/assembly';
 import {
     Blockchain,
     BytesReader,
     BytesWriter,
     encodePointer,
     MemorySlotPointer,
+    U256_BYTE_LENGTH,
+    U64_BYTE_LENGTH,
 } from '@btc-vision/btc-runtime/runtime';
 
 @final
@@ -14,6 +16,7 @@ export class UserReservation {
     // Internal fields representing the components of UserReservation
     private expirationBlock: u64 = 0;
     private startingIndex: u64 = 0;
+    private priorityIndex: u64 = 0;
 
     // Flags to manage state
     private isLoaded: bool = false;
@@ -28,7 +31,7 @@ export class UserReservation {
         public pointer: u16,
         public subPointer: MemorySlotPointer,
     ) {
-        const writer = new BytesWriter(32);
+        const writer = new BytesWriter(U256_BYTE_LENGTH);
         writer.writeU256(subPointer);
 
         this.u256Pointer = encodePointer(pointer, writer.getBuffer());
@@ -74,12 +77,19 @@ export class UserReservation {
      * @method setStartingIndex
      * @description Sets the starting index.
      * @param {u64} index - The starting index to set.
+     * @param priority
      */
     @inline
-    public setStartingIndex(index: u64): void {
+    public setStartingIndex(index: u64, priority: u64): void {
         this.ensureValues();
+
         if (this.startingIndex != index) {
             this.startingIndex = index;
+            this.isChanged = true;
+        }
+
+        if (this.priorityIndex != priority) {
+            this.priorityIndex = priority;
             this.isChanged = true;
         }
     }
@@ -146,6 +156,9 @@ export class UserReservation {
             // Unpack startingIndex (8 bytes, little endian)
             this.startingIndex = reader.readU64();
 
+            // Unpack priorityIndex (8 bytes, little endian)
+            this.priorityIndex = reader.readU64();
+
             // Skip remaining bytes (if any)
             this.isLoaded = true;
         }
@@ -158,13 +171,16 @@ export class UserReservation {
      * @returns {u256} - The packed u256 value.
      */
     private packValues(): u256 {
-        const writer = new BytesWriter(32);
+        const writer = new BytesWriter(U64_BYTE_LENGTH * 3);
 
         // Pack expirationBlock (8 bytes, little endian)
         writer.writeU64(this.expirationBlock);
 
         // Pack startingIndex (8 bytes, little endian)
         writer.writeU64(this.startingIndex);
+
+        // Pack priorityIndex (8 bytes, little endian)
+        writer.writeU64(this.priorityIndex);
 
         return u256.fromBytes(writer.getBuffer(), true);
     }
