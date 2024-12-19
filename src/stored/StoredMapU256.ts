@@ -1,5 +1,10 @@
-import { Blockchain, BytesWriter, encodePointer } from '@btc-vision/btc-runtime/runtime';
 import { u256 } from '@btc-vision/as-bignum/assembly';
+import {
+    Blockchain,
+    BytesWriter,
+    encodePointer,
+    U256_BYTE_LENGTH,
+} from '@btc-vision/btc-runtime/runtime';
 
 /**
  * StoredMap<K, V> implementation using u256 as keys.
@@ -49,7 +54,7 @@ export class StoredMapU256 {
      * @returns The storage pointer as u256.
      */
     private getKeyPointer(key: u256): u256 {
-        const writer = new BytesWriter(64);
+        const writer = new BytesWriter(U256_BYTE_LENGTH * 2);
 
         writer.writeU256(this.subPointer);
         writer.writeU256(key);

@@ -1,5 +1,11 @@
 import { u256 } from '@btc-vision/as-bignum/assembly';
-import { Blockchain, BytesWriter, encodePointer, SafeMath } from '@btc-vision/btc-runtime/runtime';
+import {
+    Blockchain,
+    BytesWriter,
+    encodePointer,
+    SafeMath,
+    U256_BYTE_LENGTH,
+} from '@btc-vision/btc-runtime/runtime';
 
 @final
 export class AdvancedStoredString {
@@ -109,7 +115,7 @@ export class AdvancedStoredString {
     }
 
     private getPointer(key: u256): u256 {
-        const buf = new BytesWriter(32 + 32);
+        const buf = new BytesWriter(U256_BYTE_LENGTH * 2);
         buf.writeU256(this.subPointer);
         buf.writeU256(key);
 

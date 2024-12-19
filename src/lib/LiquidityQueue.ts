@@ -1,3 +1,4 @@
+import { u128, u256 } from '@btc-vision/as-bignum/assembly';
 import {
     Address,
     Blockchain,
@@ -11,8 +12,17 @@ import {
     StoredU64,
     TransactionOutput,
     TransferHelper,
+    U64_BYTE_LENGTH,
 } from '@btc-vision/btc-runtime/runtime';
-import { u128, u256 } from '@btc-vision/as-bignum/assembly';
+import { MAX_RESERVATION_AMOUNT_PROVIDER } from '../data-types/UserLiquidity';
+import { LiquidityAddedEvent } from '../events/LiquidityAddedEvent';
+import { LiquidityReserved } from '../events/LiquidityReserved';
+import { ReservationCreatedEvent } from '../events/ReservationCreatedEvent';
+import { SwapExecutedEvent } from '../events/SwapExecutedEvent';
+import { quoter, Quoter } from '../math/Quoter';
+import { StoredMapU256 } from '../stored/StoredMapU256';
+import { getProvider, Provider } from './Provider';
+import { Reservation } from './Reservation';
 import {
     LIQUIDITY_EWMA_L_POINTER,
     LIQUIDITY_EWMA_LAST_UPDATE_BLOCK_POINTER,
@@ -26,15 +36,6 @@ import {
     RESERVATION_SETTINGS_POINTER,
     TOTAL_RESERVES_POINTER,
 } from './StoredPointers';
-import { StoredMapU256 } from '../stored/StoredMapU256';
-import { getProvider, Provider } from './Provider';
-import { LiquidityAddedEvent } from '../events/LiquidityAddedEvent';
-import { quoter, Quoter } from '../math/Quoter';
-import { LiquidityReserved } from '../events/LiquidityReserved';
-import { Reservation } from './Reservation';
-import { MAX_RESERVATION_AMOUNT_PROVIDER } from '../data-types/UserLiquidity';
-import { ReservationCreatedEvent } from '../events/ReservationCreatedEvent';
-import { SwapExecutedEvent } from '../events/SwapExecutedEvent';
 
 export class LiquidityQueue {
     public static RESERVATION_EXPIRE_AFTER: u64 = 5;
@@ -860,7 +861,7 @@ export class LiquidityQueue {
 
     private getReservationListForBlock(blockNumber: u64): StoredU128Array {
         // 28 bytes, 4 bytes left, 4 bytes for the indexes, which will never happen since the theoretical limit is 4000 OP_NET transactions per block.
-        const writer = new BytesWriter(8 + this.tokenIdUint8Array.length);
+        const writer = new BytesWriter(U64_BYTE_LENGTH + this.tokenIdUint8Array.length);
         writer.writeU64(blockNumber);
         writer.writeBytes(this.tokenIdUint8Array); // 20 bytes.
 

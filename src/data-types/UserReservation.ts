@@ -5,6 +5,8 @@ import {
     BytesWriter,
     encodePointer,
     MemorySlotPointer,
+    U256_BYTE_LENGTH,
+    U64_BYTE_LENGTH,
 } from '@btc-vision/btc-runtime/runtime';
 
 @final
@@ -29,7 +31,7 @@ export class UserReservation {
         public pointer: u16,
         public subPointer: MemorySlotPointer,
     ) {
-        const writer = new BytesWriter(32);
+        const writer = new BytesWriter(U256_BYTE_LENGTH);
         writer.writeU256(subPointer);
 
         this.u256Pointer = encodePointer(pointer, writer.getBuffer());
@@ -169,7 +171,7 @@ export class UserReservation {
      * @returns {u256} - The packed u256 value.
      */
     private packValues(): u256 {
-        const writer = new BytesWriter(32);
+        const writer = new BytesWriter(U64_BYTE_LENGTH * 3);
 
         // Pack expirationBlock (8 bytes, little endian)
         writer.writeU64(this.expirationBlock);
