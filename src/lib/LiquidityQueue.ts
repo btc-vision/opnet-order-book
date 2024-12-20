@@ -202,15 +202,9 @@ export class LiquidityQueue {
         usePriorityQueue: boolean,
     ): void {
         const provider: Provider = getProvider(providerId);
-        const liquidity: u128 = provider.liquidity;
+        const oldLiquidity: u128 = provider.liquidity;
 
-        // Tax for priority queue
-        const liquidityAmount: u128 = usePriorityQueue
-            ? this.getTokensAfterTax(amountIn)
-            : amountIn;
-
-        const taxAmount: u128 = SafeMath.sub128(amountIn, liquidityAmount);
-        if (!u128.lt(liquidity, SafeMath.sub128(u128.Max, liquidityAmount))) {
+        if (!u128.lt(oldLiquidity, SafeMath.sub128(u128.Max, amountIn))) {
             throw new Revert('Liquidity overflow. Please add a smaller amount.');
         }
 
@@ -222,10 +216,10 @@ export class LiquidityQueue {
 
         const quote = this.quote();
         if (quote.isZero()) {
-            throw new Revert(`Quote is zero. Please set P0 if you are the owner of the token.`);
+            throw new Revert('Quote is zero. Please set P0 if you are the owner of the token.');
         }
 
-        const liquidityInSatoshis: u256 = SafeMath.div(liquidityAmount.toU256(), quote);
+        const liquidityInSatoshis: u256 = SafeMath.div(amountIn.toU256(), quote);
         if (
             u256.lt(
                 liquidityInSatoshis,
@@ -237,22 +231,37 @@ export class LiquidityQueue {
             );
         }
 
-        // TODO: Verify if the BTC fees were provided.
-        provider.liquidity = SafeMath.add128(liquidity, liquidityAmount);
+        // Transfer the full amountIn from user to contract first
+        TransferHelper.safeTransferFrom(
+            this.token,
+            Blockchain.tx.sender,
+            Blockchain.contractAddress,
+            amountIn.toU256(),
+        );
 
-        if (!provider.reserved.isZero()) {
-            if (provider.btcReceiver !== receiver) {
-                throw new Revert(
-                    'Cannot change receiver address for provider when someone reserved your liquidity',
-                );
-            }
-        } else {
-            provider.btcReceiver = receiver;
-        }
+        // Compute net liquidity if priority is requested for the new amount
+        // If normal queue: no tax on new liquidity
+        // If priority queue: tax on new liquidity
+        const newLiquidityNet: u128 = usePriorityQueue
+            ? this.getTokensAfterTax(amountIn)
+            : amountIn;
 
-        if (!provider.isActive()) {
+        const newTax: u128 = SafeMath.sub128(amountIn, newLiquidityNet);
+
+        // If transitioning from normal to priority:
+        // We must also tax the old liquidity at the same rate
+        let oldTax: u128 = u128.Zero;
+        const wasNormal = !provider.isPriority() && provider.isActive() && usePriorityQueue;
+        if (wasNormal) {
+            // Compute tax on old liquidity
+            oldTax = this.computePriorityTax(oldLiquidity.toU256()).toU128();
+
+            // Switch provider to priority
+            provider.setActive(true, true);
+            this._priorityQueue.push(providerId);
+        } else if (!provider.isActive()) {
+            // If provider not active, activate now
             provider.setActive(true, usePriorityQueue);
-
             if (usePriorityQueue) {
                 this._priorityQueue.push(providerId);
             } else {
@@ -260,30 +269,43 @@ export class LiquidityQueue {
             }
         }
 
-        if (usePriorityQueue) {
-            // TODO: Transfer the token fees somewhere.
-            TransferHelper.safeTransferFrom(
-                this.token,
-                Blockchain.tx.sender,
-                Address.dead(),
-                taxAmount.toU256(),
+        // Add new liquidity to the provider
+        provider.liquidity = SafeMath.add128(oldLiquidity, amountIn);
+
+        // If provider's liquidity is reserved by someone else, we cannot change the receiver
+        if (!provider.reserved.isZero() && provider.btcReceiver !== receiver) {
+            throw new Revert(
+                'Cannot change receiver address for provider when someone reserved your liquidity',
             );
+        } else if (provider.reserved.isZero()) {
+            provider.btcReceiver = receiver;
         }
 
-        const liquidityAmountU256: u256 = liquidityAmount.toU256();
-        TransferHelper.safeTransferFrom(
-            this.token,
-            Blockchain.tx.sender,
-            Blockchain.contractAddress,
-            liquidityAmountU256,
-        );
+        this.updateTotalReserve(this.tokenId, amountIn.toU256(), true);
 
-        this.updateTotalReserve(this.tokenId, liquidityAmountU256, true);
+        // If priority, we must remove oldTax + newTax from provider's liquidity and total reserves
+        if (usePriorityQueue) {
+            const totalTax: u128 = SafeMath.add128(oldTax, newTax);
 
-        // Update the EWMA of liquidity after adding liquidity
+            if (!totalTax.isZero()) {
+                // Remove tax from provider liquidity
+                provider.liquidity = SafeMath.sub128(provider.liquidity, totalTax);
+
+                // Remove tax from total reserves
+                this.updateTotalReserve(this.tokenId, totalTax.toU256(), false);
+
+                // Transfer the total tax from contract to dead
+                TransferHelper.safeTransfer(this.token, Address.dead(), totalTax.toU256());
+            }
+
+            // TODO: Verify BTC fees for using priority queue if required.
+        }
+
+        // Update EWMA and block quote
         this.updateEWMA_L();
         this.setBlockQuote();
 
+        // Emit liquidity added event
         const liquidityEvent = new LiquidityAddedEvent(provider.liquidity, receiver);
         Blockchain.emit(liquidityEvent);
     }
@@ -624,6 +646,19 @@ export class LiquidityQueue {
         );
     }
 
+    /**
+     * Compute the priority tax (3%) for a given amount of liquidity.
+     * Based on PERCENT_TOKENS_FOR_PRIORITY_QUEUE = 30 and PERCENT_TOKENS_FOR_PRIORITY_FACTOR = 1000,
+     * tax = amount * (30/1000) = amount * 0.03
+     */
+    private computePriorityTax(amount: u256): u256 {
+        const numerator = SafeMath.mul(
+            amount,
+            LiquidityQueue.PERCENT_TOKENS_FOR_PRIORITY_QUEUE.toU256(),
+        );
+        return SafeMath.div(numerator, LiquidityQueue.PERCENT_TOKENS_FOR_PRIORITY_FACTOR.toU256());
+    }
+
     private resetProvider(provider: Provider): void {
         if (!provider.liquidity.isZero()) {
             TransferHelper.safeTransfer(this.token, Address.dead(), provider.liquidity.toU256());
@@ -946,6 +981,10 @@ export class LiquidityQueue {
                 continue;
             }
 
+            if (!provider.isPriority()) {
+                throw new Revert('Impossible state: provider is not priority in priority queue.');
+            }
+
             if (u128.lt(provider.liquidity, provider.reserved)) {
                 throw new Revert(
                     `Impossible state: liquidity < reserved for provider ${providerId}.`,
@@ -1018,6 +1057,12 @@ export class LiquidityQueue {
 
             provider = getProvider(providerId);
             if (!provider.isActive()) {
+                this.currentIndex++;
+                continue;
+            }
+
+            if (provider.isPriority()) {
+                // Moved to priority queue
                 this.currentIndex++;
                 continue;
             }
