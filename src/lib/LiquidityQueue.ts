@@ -784,8 +784,13 @@ export class LiquidityQueue {
             return;
         }
 
+        //Blockchain.log(
+        //    `Purging reservations from block ${lastPurgedBlock + 1} to ${maxBlockToPurge}, current block ${currentBlockNumber}, last purge: ${this.lastPurgedBlock}`,
+        //);
+
+        let totalReservedAmount: u256 = u256.Zero;
         let updatedOne: boolean = false;
-        for (let blockNumber = lastPurgedBlock + 1; blockNumber <= maxBlockToPurge; blockNumber++) {
+        for (let blockNumber = lastPurgedBlock; blockNumber < maxBlockToPurge; blockNumber++) {
             //Blockchain.log(`Purging reservations for block ${blockNumber}`);
             const reservationList = this.getReservationListForBlock(blockNumber);
             const reservationIds = reservationList.getAll(0, reservationList.getLength() as u32);
@@ -804,7 +809,7 @@ export class LiquidityQueue {
                 const reservedPriority = reservation.getReservedPriority();
 
                 for (let j = 0; j < reservedIndexes.length; j++) {
-                    const providerIndex = reservedIndexes[i];
+                    const providerIndex = reservedIndexes[j];
                     const reservedAmount = reservedValues[j];
                     const priority = reservedPriority[j];
 
@@ -855,14 +860,13 @@ export class LiquidityQueue {
                 }
 
                 // Adjust total reserved liquidity
-                const totalReservedAmount = reservedValues.reduce<u256>(
-                    (acc, val) => SafeMath.add(acc, val.toU256()),
-                    u256.Zero,
+                totalReservedAmount = SafeMath.add(
+                    totalReservedAmount,
+                    reservedValues.reduce<u256>(
+                        (acc, val) => SafeMath.add(acc, val.toU256()),
+                        u256.Zero,
+                    ),
                 );
-
-                //Blockchain.log(`Restored ${totalReservedAmount.toString()} of reserved liquidity`);
-
-                this.updateTotalReserved(this.tokenId, totalReservedAmount, false);
 
                 // Delete the reservation data
                 reservation.delete();
@@ -874,6 +878,10 @@ export class LiquidityQueue {
         }
 
         if (updatedOne) {
+            //Blockchain.log(`Restored ${totalReservedAmount.toString()} of reserved liquidity`);
+
+            this.updateTotalReserved(this.tokenId, totalReservedAmount, false);
+
             // Update EWMA of liquidity
             this.updateEWMA_L(); // temporally.
 
@@ -885,7 +893,7 @@ export class LiquidityQueue {
         }
 
         // Update lastPurgedBlock
-        this.lastPurgedBlock = maxBlockToPurge;
+        this.lastPurgedBlock = currentBlockNumber;
     }
 
     private onNoPurge(): void {
