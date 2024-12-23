@@ -23,7 +23,7 @@ import { getProvider, saveAllProviders } from '../lib/Provider';
  * OrderBook contract for the OP_NET order book system.
  */
 @final
-export class EWMA extends OP_NET {
+export class NativeSwap extends OP_NET {
     private readonly minimumTradeSize: u256 = u256.fromU32(10_000); // The minimum trade size in satoshis.
     private readonly RESERVATION_BASE_FEE: u64 = 10_000; // The base fee for reservations in satoshis.
 
@@ -663,7 +663,7 @@ export class EWMA extends OP_NET {
 
     private getDecimals(token: Address): u8 {
         const calldata = new BytesWriter(4);
-        calldata.writeSelector(EWMA.DECIMAL_SELECTOR);
+        calldata.writeSelector(NativeSwap.DECIMAL_SELECTOR);
 
         const response = Blockchain.call(token, calldata);
         return response.readU8();
@@ -671,7 +671,7 @@ export class EWMA extends OP_NET {
 
     private getOwner(token: Address): Address {
         const calldata = new BytesWriter(4);
-        calldata.writeSelector(EWMA.OWNER_SELECTOR);
+        calldata.writeSelector(NativeSwap.OWNER_SELECTOR);
 
         const response = Blockchain.call(token, calldata);
         return response.readAddress();
