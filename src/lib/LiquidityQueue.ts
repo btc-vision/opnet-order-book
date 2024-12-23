@@ -14,6 +14,8 @@ import {
 } from '@btc-vision/btc-runtime/runtime';
 import { u128, u256 } from '@btc-vision/as-bignum/assembly';
 import {
+    ANTI_BOT_MAX_TOKENS_PER_RESERVATION,
+    INITIAL_LIQUIDITY,
     LIQUIDITY_EWMA_L_POINTER,
     LIQUIDITY_EWMA_LAST_UPDATE_BLOCK_POINTER,
     LIQUIDITY_EWMA_P0_POINTER,
@@ -59,9 +61,12 @@ export class LiquidityQueue {
     private readonly _totalReserves: StoredMapU256;
     private readonly _totalReserved: StoredMapU256;
 
+    private readonly _initialLiquidityProvider: StoredU256;
+
     private readonly _settingPurge: StoredU64;
-    private readonly _reservationSettings: StoredU64;
+    private readonly _settings: StoredU64;
     private readonly _quoteHistory: StoredU256Array;
+    private readonly _maxTokenPerSwap: StoredU256;
 
     private currentIndex: u64 = 0;
     private currentIndexPriority: u64 = 0;
@@ -89,8 +94,16 @@ export class LiquidityQueue {
         this._ewmaV = new StoredU256(LIQUIDITY_EWMA_V_POINTER, tokenId, u256.Zero);
         this._p0 = new StoredU256(LIQUIDITY_EWMA_P0_POINTER, tokenId, u256.Zero);
 
+        this._maxTokenPerSwap = new StoredU256(
+            ANTI_BOT_MAX_TOKENS_PER_RESERVATION,
+            tokenId,
+            u256.Zero,
+        );
+
         this._totalReserves = new StoredMapU256(TOTAL_RESERVES_POINTER);
         this._totalReserved = new StoredMapU256(LIQUIDITY_RESERVED_POINTER);
+
+        this._initialLiquidityProvider = new StoredU256(INITIAL_LIQUIDITY, tokenId, u256.Zero);
 
         this._settingPurge = new StoredU64(
             LIQUIDITY_EWMA_LAST_UPDATE_BLOCK_POINTER,
@@ -98,7 +111,7 @@ export class LiquidityQueue {
             u256.Zero,
         );
 
-        this._reservationSettings = new StoredU64(RESERVATION_SETTINGS_POINTER, tokenId, u256.Zero);
+        this._settings = new StoredU64(RESERVATION_SETTINGS_POINTER, tokenId, u256.Zero);
 
         this.purgeReservationsAndRestoreProviders();
     }
@@ -160,19 +173,58 @@ export class LiquidityQueue {
     }
 
     public get previousReservationStandardStartingIndex(): u64 {
-        return this._reservationSettings.get(0);
+        return this._settings.get(0);
     }
 
     public set previousReservationStandardStartingIndex(value: u64) {
-        this._reservationSettings.set(0, value);
+        this._settings.set(0, value);
     }
 
     public get previousReservationStartingIndex(): u64 {
-        return this._reservationSettings.get(1);
+        return this._settings.get(1);
     }
 
     public set previousReservationStartingIndex(value: u64) {
-        this._reservationSettings.set(1, value);
+        this._settings.set(1, value);
+    }
+
+    public get antiBotExpirationBlock(): u64 {
+        return this._settings.get(2);
+    }
+
+    public set antiBotExpirationBlock(value: u64) {
+        this._settings.set(2, value);
+    }
+
+    public get maxTokensPerReservation(): u256 {
+        return this._maxTokenPerSwap.value;
+    }
+
+    public set maxTokensPerReservation(value: u256) {
+        this._maxTokenPerSwap.value = value;
+    }
+
+    public createPool(
+        floorPrice: u256,
+        providerId: u256,
+        initialLiquidity: u128,
+        receiver: string,
+        antiBotEnabledFor: u16,
+        antiBotMaximumTokensPerReservation: u256,
+    ): void {
+        this.p0 = floorPrice;
+
+        this._initialLiquidityProvider.value = providerId;
+        this.addLiquidity(providerId, initialLiquidity, receiver, false, true);
+
+        // Anti bot settings if enabled...
+        if (antiBotEnabledFor) {
+            this.antiBotExpirationBlock = Blockchain.block.numberU64 + u64(antiBotEnabledFor);
+            this.maxTokensPerReservation = antiBotMaximumTokensPerReservation;
+        }
+
+        // And save.
+        this.save();
     }
 
     public save(): void {
@@ -188,7 +240,7 @@ export class LiquidityQueue {
         this._queue.save();
         this._priorityQueue.save();
         this._quoteHistory.save();
-        this._reservationSettings.save();
+        this._settings.save();
     }
 
     public quote(): u256 {
@@ -200,7 +252,12 @@ export class LiquidityQueue {
         amountIn: u128,
         receiver: string,
         usePriorityQueue: boolean,
+        initialLiquidity: boolean = false,
     ): void {
+        if (u256.eq(providerId, this._initialLiquidityProvider.value) && !initialLiquidity) {
+            throw new Revert('You can only add liquidity to the initial provider once.');
+        }
+
         const provider: Provider = getProvider(providerId);
         const oldLiquidity: u128 = provider.liquidity;
 
@@ -262,10 +319,13 @@ export class LiquidityQueue {
         } else if (!provider.isActive()) {
             // If provider not active, activate now
             provider.setActive(true, usePriorityQueue);
-            if (usePriorityQueue) {
-                this._priorityQueue.push(providerId);
-            } else {
-                this._queue.push(providerId);
+
+            if (!initialLiquidity) {
+                if (usePriorityQueue) {
+                    this._priorityQueue.push(providerId);
+                } else {
+                    this._queue.push(providerId);
+                }
             }
         }
 
@@ -467,6 +527,13 @@ export class LiquidityQueue {
         let tokensReserved: u256 = u256.Zero;
         let satSpent: u256 = u256.Zero;
         let tokensRemaining: u256 = SafeMath.mul(maximumAmountIn, currentPrice);
+
+        // anti-bot limits check
+        if (Blockchain.block.numberU64 <= this.antiBotExpirationBlock) {
+            if (u256.gt(maximumAmountIn, this.maxTokensPerReservation)) {
+                throw new Revert('You cannot exceed the anti-bot maximum tokens per reservation.');
+            }
+        }
 
         //Blockchain.log(
         //    `Current price: ${currentPrice}, Maximum amount in: ${maximumAmountIn}, Tokens remaining: ${tokensRemaining}`,
@@ -1095,6 +1162,22 @@ export class LiquidityQueue {
             }
 
             this.currentIndex++;
+        }
+
+        // Initial liquidity provider
+        if (!this._initialLiquidityProvider.value.isZero()) {
+            const initProvider = getProvider(this._initialLiquidityProvider.value);
+
+            if (initProvider.isActive()) {
+                const availableLiquidity: u128 = SafeMath.sub128(
+                    initProvider.liquidity,
+                    initProvider.reserved,
+                );
+
+                if (!availableLiquidity.isZero()) {
+                    return initProvider;
+                }
+            }
         }
 
         return null;

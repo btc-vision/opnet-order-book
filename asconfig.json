@@ -1,8 +1,8 @@
 {
     "targets": {
         "release": {
-            "outFile": "build/OrderBook.wasm",
-            "textFile": "build/OrderBook.wat",
+            "outFile": "build/NativeSwap.wasm",
+            "textFile": "build/NativeSwap.wat",
             "sourceMap": false,
             "optimizeLevel": 3,
             "shrinkLevel": 2,

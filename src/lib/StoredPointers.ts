@@ -21,3 +21,6 @@ export const RESERVATION_AMOUNTS: u16 = Blockchain.nextPointer;
 export const RESERVATION_PRIORITY: u16 = Blockchain.nextPointer;
 export const RESERVATION_ID_POINTER: u16 = Blockchain.nextPointer;
 export const RESERVATION_IDS_BY_BLOCK_POINTER: u16 = Blockchain.nextPointer;
+
+export const ANTI_BOT_MAX_TOKENS_PER_RESERVATION: u16 = Blockchain.nextPointer;
+export const INITIAL_LIQUIDITY: u16 = Blockchain.nextPointer;

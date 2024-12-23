@@ -1,12 +1,12 @@
 {
-    "name": "@btc-vision/order-book",
+    "name": "@btc-vision/native-swap",
     "version": "0.0.1",
-    "description": "Order book contract for OP_NET",
+    "description": "Native swap contract for OP_NET",
     "main": "index.js",
     "scripts": {
         "build": "asc src/index.ts --target release --measure --uncheckedBehavior never"
     },
-    "author": "BlobMaster41",
+    "author": "MotoSwap",
     "license": "MIT",
     "devDependencies": {
         "@types/node": "^22.5.5",

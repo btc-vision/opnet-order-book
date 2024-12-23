@@ -61,8 +61,8 @@ export class EWMA extends OP_NET {
                 return this.getReserve(calldata);
             case encodeSelector('getQuote'):
                 return this.getQuote(calldata);
-            case encodeSelector('setQuote'): // aka enable trading
-                return this.setQuote(calldata);
+            case encodeSelector('createPool'): // aka enable trading
+                return this.createPool(calldata);
             case encodeSelector('priorityQueueCost'): // aka enable trading
                 return this.getPriorityQueueCost(calldata);
             case encodeSelector('getProviderDetails'):
@@ -100,13 +100,33 @@ export class EWMA extends OP_NET {
         return writer;
     }
 
-    private setQuote(calldata: Calldata): BytesWriter {
+    private createPool(calldata: Calldata): BytesWriter {
         const token: Address = calldata.readAddress();
-        const quote: u256 = calldata.readU256();
-
         const tokenOwner = this.getOwner(token);
         if (Blockchain.tx.origin.equals(tokenOwner) == false) {
             throw new Revert('Only token owner can set quote');
+        }
+
+        const floorPrice: u256 = calldata.readU256();
+        const initialLiquidity: u128 = calldata.readU128();
+        const receiver: string = calldata.readStringWithLength();
+        const antiBotEnabledFor: u16 = calldata.readU16();
+        const antiBotMaximumTokensPerReservation: u256 = calldata.readU256();
+
+        if (Blockchain.validateBitcoinAddress(receiver) == false) {
+            throw new Revert('Invalid receiver address');
+        }
+
+        if (floorPrice.isZero()) {
+            throw new Revert('Floor price cannot be zero');
+        }
+
+        if (initialLiquidity.isZero()) {
+            throw new Revert('Initial liquidity cannot be zero');
+        }
+
+        if (antiBotEnabledFor !== 0 && antiBotMaximumTokensPerReservation.isZero()) {
+            throw new Revert('Anti-bot maximum tokens per reservation cannot be zero');
         }
 
         const queue = this.getLiquidityQueue(token, this.addressToPointer(token));
@@ -114,8 +134,15 @@ export class EWMA extends OP_NET {
             throw new Revert('Base quote already set');
         }
 
-        queue.p0 = quote;
-        queue.save();
+        const providerId = this.addressToPointerU256(Blockchain.tx.sender, token);
+        queue.createPool(
+            floorPrice,
+            providerId,
+            initialLiquidity,
+            receiver,
+            antiBotEnabledFor,
+            antiBotMaximumTokensPerReservation,
+        );
 
         const writer = new BytesWriter(1);
         writer.writeBoolean(true);
