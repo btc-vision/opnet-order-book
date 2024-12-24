@@ -8,16 +8,15 @@ import {
     Revert,
     SafeMath,
     Selector,
-    TransactionOutput,
     TransferHelper,
 } from '@btc-vision/btc-runtime/runtime';
 import { OP_NET } from '@btc-vision/btc-runtime/runtime/contracts/OP_NET';
 import { u128, u256 } from '@btc-vision/as-bignum/assembly';
-import { FEE_COLLECT_SCRIPT_PUBKEY } from '../utils/OrderBookUtils';
 import { LiquidityQueue } from '../lib/LiquidityQueue';
 import { ripemd160, sha256 } from '@btc-vision/btc-runtime/runtime/env/global';
 import { quoter, Quoter } from '../math/Quoter';
 import { getProvider, saveAllProviders } from '../lib/Provider';
+import { getTotalFeeCollected } from '../utils/OrderBookUtils';
 
 /**
  * OrderBook contract for the OP_NET order book system.
@@ -31,17 +30,11 @@ export class NativeSwap extends OP_NET {
         super();
     }
 
-    private static get DECIMAL_SELECTOR(): Selector {
-        return encodeSelector('decimals');
-    }
-
     private static get OWNER_SELECTOR(): Selector {
         return encodeSelector('owner');
     }
 
-    public override onDeployment(_calldata: Calldata): void {
-        // Logic to run on deployment
-    }
+    public override onDeployment(_calldata: Calldata): void {}
 
     public override onExecutionCompleted(): void {
         saveAllProviders();
@@ -51,24 +44,25 @@ export class NativeSwap extends OP_NET {
         switch (method) {
             case encodeSelector('reserve'):
                 return this.reserve(calldata);
+            case encodeSelector('swap'):
+                return this.swap(calldata);
             case encodeSelector('addLiquidity'):
                 return this.addLiquidity(calldata);
             case encodeSelector('removeLiquidity'):
                 return this.removeLiquidity(calldata);
-            case encodeSelector('swap'):
-                return this.swap(calldata);
+            case encodeSelector('createPool'): // aka enable trading
+                return this.createPool(calldata);
+            /** Readable methods */
             case encodeSelector('getReserve'):
                 return this.getReserve(calldata);
             case encodeSelector('getQuote'):
                 return this.getQuote(calldata);
-            case encodeSelector('createPool'): // aka enable trading
-                return this.createPool(calldata);
-            case encodeSelector('priorityQueueCost'): // aka enable trading
-                return this.getPriorityQueueCost(calldata);
             case encodeSelector('getProviderDetails'):
                 return this.getProviderDetails(calldata);
             case encodeSelector('getEWMA'):
                 return this.getEWMA(calldata);
+            case encodeSelector('priorityQueueCost'): // aka enable trading
+                return this.getPriorityQueueCost(calldata);
             default:
                 return super.execute(method, calldata);
         }
@@ -76,7 +70,6 @@ export class NativeSwap extends OP_NET {
 
     private getProviderDetails(calldata: Calldata): BytesWriter {
         const token = calldata.readAddress();
-
         const providerId = this.addressToPointerU256(Blockchain.tx.sender, token);
         const provider = getProvider(providerId);
 
@@ -95,7 +88,7 @@ export class NativeSwap extends OP_NET {
         const cost = queue.getCostPriorityFee();
 
         const writer = new BytesWriter(32);
-        writer.writeU128(cost);
+        writer.writeU64(cost);
 
         return writer;
     }
@@ -202,9 +195,8 @@ export class NativeSwap extends OP_NET {
 
     private swap(calldata: Calldata): BytesWriter {
         const token: Address = calldata.readAddress();
-        const isSimulation: bool = calldata.readBoolean();
 
-        return this._swap(token, isSimulation);
+        return this._swap(token);
     }
 
     private getReserve(calldata: Calldata): BytesWriter {
@@ -216,37 +208,39 @@ export class NativeSwap extends OP_NET {
     /**
      * @function _addLiquidity
      * @description
-     * Adds liquidity to the OP_NET order book system for a specified token. Similar to how Uniswap v4 operates, users can
-     * provide liquidity so buyers can swap their BTC for the token being traded. The liquidity is what buyers will be swapping
-     * their BTC for, and the user who provides the liquidity will receive the BTC in return.
+     * Adds liquidity to the native swap system for a specified token. This liquidity is what
+     * buyers will swap their BTC for, and the user who provides the liquidity will receive the BTC in return.
      *
-     * Each position in the order book system is represented by a "tick" (price position). The user can add liquidity to a specific
-     * price position (tick) in the order book system. The user must provide the token amount and the BTC amount to be added as liquidity.
-     * An approval of the token amount must be done before calling this method. This method will transfer the token amount from the user to the contract using transferFrom.
+     * The user must provide:
+     * - The token address (`token`)
+     * - A valid BTC receiver address (`receiver`) to which future BTC will be delivered
+     * - The token amount (`amountIn`) to contribute as liquidity
+     * - A `priority` flag indicating whether this liquidity goes to the priority queue or the normal queue
      *
-     * The system must use the correct mathematical formulas to provide the smoothest trading experience for users.
-     * In other words, we want to avoid having to manage of a bunch of liquidity positions that are close to each other.
-     * The system must be able to handle the addition of liquidity to the order book system in a way that is efficient and cost-effective.
+     * Internally, this method:
+     * 1. Validates inputs (token address, `amountIn`).
+     * 2. Determines a unique provider ID based on the sender's address plus the token address.
+     * 3. Calls `LiquidityQueue.addLiquidity(...)` to handle the logic of:
+     *    - Transferring tokens from the user to the contract
+     *    - Possibly taxing the liquidity if `priority` is true
+     *    - Updating storage, total reserves, etc.
+     * 4. Saves the updated queue state.
      *
-     * Note that multiple user may add liquidity to the same price position. If a user tries to add liquidity to a very close price position, the system must merge the liquidity positions.
-     * The range of price positions that can be merged is determined by the system. The "level" is determined by a variable called "tickSpacing".
+     * Note that if multiple users add liquidity, each user is tracked as a separate provider. The
+     * liquidity from all providers is aggregated in the contract’s internal structures.
      *
      * @param {Address} token - The address of the token to which liquidity is being added.
-     * @param {Address} receiver - The address to which the bitcoins will be sent.
-     * @param {u128} amountIn - The maximum amount of tokens to be added as liquidity.
+     * @param {string} receiver - The BTC receiver address (must be a valid Bitcoin address).
+     * @param {u128} amountIn - The amount of tokens to add as liquidity.
+     * @param {boolean} priority - If `true`, liquidity goes to the priority queue (with a tax). Otherwise, normal queue.
      *
-     * @param priority
      * @returns {BytesWriter} -
-     * Return true on success, revert on failure.
+     * Returns a `BytesWriter` containing a single boolean (`true` on success). Reverts on failure.
      *
-     * @event - An event containing the liquidity details must be emitted. The event must contain the following fields:
-     * - tickId: The unique identifier for the liquidity position.
-     * - level: The price level at which the liquidity is available.
-     * - liquidityAmount: The amount of tokens added as liquidity.
-     * - amountOut: The amount of tokens that can be bought for the specified amount at the given price point.
-     *
-     * @throws {Error} If the token address is invalid or if the liquidity addition fails.
-     * @throws {Error} If the user does not have enough tokens to add liquidity.
+     * @throws {Revert} If the token address is invalid or empty.
+     * @throws {Revert} If `amountIn` is zero.
+     * @throws {Revert} If the user does not have enough approved tokens.
+     * @throws {Revert} If any internal checks fail (e.g., anti-bot checks or queue logic).
      */
     private _addLiquidity(
         token: Address,
@@ -292,66 +286,45 @@ export class NativeSwap extends OP_NET {
         return ripemd160(address);
     }
 
-    /** Get total fees collected */
-    private getTotalFeeCollected(): u64 {
-        const outputs = Blockchain.tx.outputs;
-
-        let totalFee: u64 = 0;
-
-        // We are certain it's not the first output.
-        for (let i = 1; i < outputs.length; i++) {
-            const output: TransactionOutput = outputs[i];
-            if (output.to !== FEE_COLLECT_SCRIPT_PUBKEY) {
-                continue;
-            }
-
-            if (u64.MAX_VALUE - totalFee < output.value) {
-                break;
-            }
-
-            totalFee += output.value;
-        }
-
-        return totalFee;
-    }
-
     /**
      * @function _reserve
      * @description
-     * Reserves ticks (price positions) in the OP_NET order book system, similar to how Uniswap v4 handles liquidity ticks.
-     * The OP_NET system allows users to reserve specific price levels for tokens being traded, with BTC as the input currency.
-     * This method effectively reserves tokens for a given price point, ensuring the tokens are available for the user to buy at the specified price in his next transaction.
+     * Reserves liquidity positions in the native swap, allowing a user to lock in a certain
+     * amount of tokens for a few blocks, preventing front-running. The user is effectively signaling
+     * an intention to buy those tokens with BTC within the reservation window.
      *
-     * For now, the order-book will only support reservations for the output token (i.e., the token being traded),
-     * with BTC being the input that is swapped for the output token. This ensures a seamless swap process where the user
-     * "swaps" BTC for tokens at a reserved price position on-chain.
+     * Key steps:
+     * 1. Validate input parameters (token, `maximumAmountIn`, `minimumAmountOut`).
+     * 2. Check for a minimum trade size.
+     * 3. Ensure enough fees (`this.RESERVATION_BASE_FEE`) are paid by the user (in satoshis).
+     * 4. Call `queue.reserveLiquidity(...)`, which:
+     *    - Possibly triggers anti-bot checks inside `LiquidityQueue`
+     *    - Reserves tokens across priority or normal queues
+     *    - Returns the total tokens reserved
+     * 5. Save the updated queue state.
      *
-     * Note that a reserved position will only be valid for 5 blocks. If the user fails to execute the swap within this time frame, the reserved ticks are released.
-     * Note that for each reserved ticks, the user must pay 10,000 satoshis as a fee to the order book. For now, put TODO: Implement fee logic where it should be verified.
+     * Reservations are valid for only 5 blocks. If a user fails to execute a swap within
+     * that window, the tokens return to the providers. The system automatically purges
+     * expired reservations.
      *
-     * @param {Address} token - The token address for which the ticks are being reserved.
-     * @param {u256} maximumAmountIn - The quantity of satoshis to be traded for the specified token.
-     * @param {u256} minimumAmountOut - The minimum amount of tokens to receive for the trade.
+     * @param {Address} token - The token address for which liquidity is being reserved.
+     * @param {u256} maximumAmountIn - The quantity of satoshis the user is willing to spend.
+     * @param {u256} minimumAmountOut - The minimum number of tokens the user expects to receive.
      *
      * @returns {BytesWriter} -
-     * This method must return the reservation id for the reserved ticks. The reservation id is a unique identifier for the reserved ticks.
+     * A `BytesWriter` containing the total number of tokens reserved (u256).
      *
      * @event
-     * An event containing the reservation details must be emitted. The event must contain the following fields:
-     * - reservationId: The unique identifier for the reservation.
-     * - totalReserved: The total number of tokens reserved for the trade.
-     * - expectedAmountOut: The expected number of tokens that can be bought for the specified amount at the given price point.
+     * - Reservation event: Emitted inside `LiquidityQueue` with details about the total reserved tokens.
+     * - Each reserved position triggers an event with specific queue details, the amount reserved, etc.
      *
-     * @event
-     * Multiple events containing the reserved ticks must be emitted. Each event must contain the following fields:
-     *  * tickId (u256): A unique identifier for the liquidity position.
-     *  * level (u64): The price level at which the liquidity is available.
-     *  * maximumQuantity (u256): The maximum number of token reserved for the trade at this price level.
-     *
-     * @throws {Error} If reservation fails due to insufficient liquidity.
-     * @throws {Error} If invalid parameters are provided.
-     * @throws {Error} If the requested quantity is less than the minimum trade size.
-     * @throws {Error} If the user already has a pending reservation for the same token.
+     * @throws {Revert} If the token address is invalid or empty.
+     * @throws {Revert} If `maximumAmountIn` is zero or below `minimumTradeSize`.
+     * @throws {Revert} If `minimumAmountOut` is zero.
+     * @throws {Revert} If insufficient fees were provided.
+     * @throws {Revert} If anti-bot restrictions block the reservation.
+     * @throws {Revert} If the user already has an active reservation.
+     * @throws {Revert} If there is no liquidity available.
      */
     private _reserve(token: Address, maximumAmountIn: u256, minimumAmountOut: u256): BytesWriter {
         // Validate inputs
@@ -371,7 +344,7 @@ export class NativeSwap extends OP_NET {
             throw new Revert('ORDER_BOOK: Minimum amount out cannot be zero');
         }
 
-        const totalFee = this.getTotalFeeCollected();
+        const totalFee = getTotalFeeCollected();
         if (totalFee < this.RESERVATION_BASE_FEE) {
             throw new Revert('ORDER_BOOK: Insufficient fees collected');
         }
@@ -389,22 +362,31 @@ export class NativeSwap extends OP_NET {
     /**
      * @function _getQuote
      * @description
-     * Retrieves a quote for a specified bitcoin amount to be traded for a given token.
-     * This method simulates EWMA decay based on the number of blocks elapsed since the last update,
-     * providing an accurate estimate of the number of tokens that can be bought for a specified amount of BTC.
+     * Fetches the estimated number of tokens a user can purchase for a given BTC amount (`satoshisIn`)
+     * in the native swap. It simulates the Exponential Weighted Moving Average (EWMA)
+     * updates for both volume (ewmaV) and liquidity (ewmaL), without actually storing the results,
+     * to produce an *up-to-date quote* as if the contract had just performed an update.
      *
-     * @param {Address} token - The unique identifier of the token for which the quote is requested.
-     * @param {u256} satoshisIn - The quantity of satoshis to be traded for the specified token. Minimum value is 1000 satoshis.
+     * Steps:
+     * 1. Validates the token address and `satoshisIn`.
+     * 2. Performs ephemeral EWMA updates to see how the price would adjust given the elapsed blocks.
+     * 3. Calculates `tokensOut` = `satoshisIn` * `currentPrice`.
+     * 4. Checks if `tokensOut` exceeds available liquidity; if so, caps `tokensOut` and adjusts the
+     *    required `satoshisIn`.
+     * 5. Returns `(tokensOut, requiredSatoshis, currentPrice)` so callers know how many tokens
+     *    they’d receive, how many satoshis are required, and what the price was.
+     *
+     * @param {Address} token - The token address for which to obtain a quote.
+     * @param {u256} satoshisIn - The amount of BTC (in satoshis) the user plans to spend.
      *
      * @returns {BytesWriter} -
-     * This method returns a receipt containing the following fields:
-     * - estimatedQuantity (u256): The number of tokens that can be bought for the specified quantity at the given price point.
-     * - requiredSatoshis (u256): The amount of satoshis required to achieve the estimated quantity.
+     * A `BytesWriter` containing:
+     *  - `tokensOut` (u256)
+     *  - `requiredSatoshis` (u256)
+     *  - `currentPrice` (u256, the contract’s approximate exchange rate)
      *
-     * @throws {Revert} If the token is not found in the order book.
-     * @throws {Revert} If the requested quantity exceeds available liquidity in the order book.
-     * @throws {Revert} If invalid parameters are provided (e.g., negative quantity, zero price).
-     * @throws {Revert} If the requested quantity is less than the minimum trade size.
+     * @throws {Revert} If `token` is invalid, `satoshisIn` < `this.minimumTradeSize`, or the price is zero.
+     * @throws {Revert} If no liquidity is available and thus `tokensOut` would be zero.
      */
     private _getQuote(token: Address, satoshisIn: u256): BytesWriter {
         // Validate inputs
@@ -555,6 +537,8 @@ export class NativeSwap extends OP_NET {
             throw new Revert('Invalid token address');
         }
 
+        // TODO: Implement logic to remove liquidity
+
         const totalTokensReturned = u256.Zero;
 
         // Return tokens to the seller
@@ -571,48 +555,34 @@ export class NativeSwap extends OP_NET {
     /**
      * @function _swap
      * @description
-     * Executes a swap of BTC for a specified token in the OP_NET order book system.
-     * This function allows a buyer to purchase the reserved ticks (price positions) for a given token using BTC.
-     * The swap will fulfill the buyer's reservation and return the tokens to the buyer's address.
+     * Executes a swap for a user who has previously reserved tokens.
+     * The user is expected to pay BTC to the appropriate addresses.
      *
-     * The function ensures that the amount of tokens returned to the buyer matches the amount of BTC provided, taking into account
-     * the current price levels (ticks) and any applicable slippage. It must handle partial fills if full liquidity is not available
-     * at the desired price points. It must also handle partial fills if the buyer's provided BTC amount is not sufficient to fill all reserved ticks.
+     * Process Flow:
+     * 1. Validate the token address.
+     * 2. Retrieve the user’s existing reservation (if any).
+     * 3. Check if the reservation is within its valid block range.
+     *    - If expired, revert or re-release tokens to providers.
+     * 4. Call `queue.swap(...)`, which:
+     *    - Finds each provider with reserved tokens for this user
+     *    - Transfers out the correct amount of tokens to the user
+     *    - Updates each provider’s liquidity
+     *    - Emits a SwapExecutedEvent
+     * 5. Save the updated queue state.
      *
-     * Note that for now, you must not implement the logic that check if the buyer have provided the correct amount of BTC to the correct address. You must put a TODO: Implement logic to check if the buyer has provided the correct amount of BTC to the correct address and revert if not.
-     *
-     * The system must check that the reservations are not expired and still valid. If the a reservation is expired, the system must release the reservations and revert the swap.
-     *
-     * If the isSimulation flag is set to true, the system must know that this is a simulation and if the reservation are close from being expired, the system must revert the swap with a message that the reservation are close to be expired. (1 blocks before the expiration)
-     *
-     * @param {Address} token - The address of the token to swap for BTC.
-     * @param {bool} isSimulation - A flag indicating whether the swap is a simulation.
+     * @param {Address} token - The token the user wants to swap for their BTC.
      *
      * @returns {BytesWriter} -
-     * Returns a receipt containing a boolean value indicating the success of the swap.
+     * A `BytesWriter` with a boolean (true) on success.
      *
      * @event
-     * An event containing the swap details must be emitted. The event must contain the following fields:
-     * - buyer: The address of the buyer executing the swap.
-     * - amountIn: The amount of BTC provided by the buyer.
-     * - amountOut: The amount of tokens received by the buyer.
-     * - ticksFilled: Details of the ticks that were filled during the swap.
+     * - SwapExecutedEvent: Emitted from `LiquidityQueue`, detailing the buyer, how many satoshis were spent,
+     *   how many tokens were purchased, etc.
      *
-     * @event
-     * An event containing the updated ticks must be emitted. The event must contain the following fields:
-     * - tickId: The unique identifier for each tick.
-     * - level: The price level (in satoshis per token) of each tick.
-     * - liquidityAmount: The new amount of tokens available at each price level.
-     * - acquiredAmount: The amount of tokens acquired by the buyer at each price level.
-     *
-     * @throws {Error} If the token is not available in the order book.
-     * @throws {Error} If the swap cannot be fulfilled due to insufficient liquidity.
-     * @throws {Error} If invalid parameters are provided.
-     * @throws {Error} If the reservation is expired.
-     * @throws {Error} If the reservation is close to be expired and the swap is a simulation.
-     * @throws {Error} If the buyer does not have enough BTC to complete the swap.
+     * @throws {Revert} If the user has no active reservation.
+     * @throws {Revert} If the buyer does not provide enough BTC (implementation TBD).
      */
-    private _swap(token: Address, isSimulation: bool): BytesWriter {
+    private _swap(token: Address): BytesWriter {
         // Validate inputs
         if (token.empty() || token.equals(Blockchain.DEAD_ADDRESS)) {
             throw new Revert('Invalid token address');
@@ -621,10 +591,6 @@ export class NativeSwap extends OP_NET {
         const queue: LiquidityQueue = this.getLiquidityQueue(token, this.addressToPointer(token));
         queue.swap(Blockchain.tx.sender);
         queue.save();
-
-        // Emit SwapExecutedEvent
-        //const swapEvent = new SwapExecutedEvent(buyer, totalBtcRequired, totalTokensAcquired);
-        //this.emitEvent(swapEvent);
 
         // Return success
         const result = new BytesWriter(1);
@@ -635,17 +601,18 @@ export class NativeSwap extends OP_NET {
     /**
      * @function _getReserve
      * @description
-     * Retrieves the total reserve (available liquidity) for a specified token in the OP_NET order book system.
-     * This function allows users to check the total amount of tokens currently available for trading (sell pressure) in the order book.
-     * The reserve should be maintained via a stored value to avoid recomputing it each time this function is called.
+     * Retrieves the total liquidity (`queue.liquidity`) and total reserved liquidity (`queue.reservedLiquidity`) for
+     * the specified token. This helps callers understand how many tokens are present in the contract and how many are
+     * currently locked in reservations.
      *
-     * @param {Address} token - The address of the token for which to retrieve the reserve.
+     * @param {Address} token - The address of the token for which to retrieve total liquidity.
      *
      * @returns {BytesWriter} -
-     * Returns the total reserve amount (u256) of the specified token available in the order book.
+     * A `BytesWriter` containing two u256 values:
+     *  1. The total liquidity in the contract
+     *  2. The total reserved liquidity
      *
-     * @throws {Error} If the token is not found in the order book.
-     * @private
+     * @throws {Revert} If the token address is invalid.
      */
     private _getReserve(token: Address): BytesWriter {
         // Validate input
@@ -659,14 +626,6 @@ export class NativeSwap extends OP_NET {
         result.writeU256(queue.liquidity);
         result.writeU256(queue.reservedLiquidity);
         return result;
-    }
-
-    private getDecimals(token: Address): u8 {
-        const calldata = new BytesWriter(4);
-        calldata.writeSelector(NativeSwap.DECIMAL_SELECTOR);
-
-        const response = Blockchain.call(token, calldata);
-        return response.readU8();
     }
 
     private getOwner(token: Address): Address {

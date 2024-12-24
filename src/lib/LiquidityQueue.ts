@@ -37,6 +37,7 @@ import { Reservation } from './Reservation';
 import { MAX_RESERVATION_AMOUNT_PROVIDER } from '../data-types/UserLiquidity';
 import { ReservationCreatedEvent } from '../events/ReservationCreatedEvent';
 import { SwapExecutedEvent } from '../events/SwapExecutedEvent';
+import { getTotalFeeCollected } from '../utils/OrderBookUtils';
 
 export class LiquidityQueue {
     public static RESERVATION_EXPIRE_AFTER: u64 = 5;
@@ -45,11 +46,11 @@ export class LiquidityQueue {
     public static MINIMUM_PROVIDER_RESERVATION_AMOUNT: u256 = u256.fromU32(1000); // 750 satoshis worth.
     public static MINIMUM_LIQUIDITY_IN_SAT_VALUE_ADD_LIQUIDITY: u256 = u256.fromU32(10_000); // 100_000 satoshis worth.
 
-    public static PRICE_PER_USER_IN_PRIORITY_QUEUE_BTC: u64 = 1000;
     public static PERCENT_TOKENS_FOR_PRIORITY_QUEUE: u128 = u128.fromU32(30); // 3%
     public static PERCENT_TOKENS_FOR_PRIORITY_FACTOR: u128 = u128.fromU32(1000); // 100%
 
-    public static MAX_RESERVATION_LIQUIDITY_PER_PROVIDER: u128 = u128.Max;
+    public static PRICE_PER_USER_IN_PRIORITY_QUEUE_BTC: u64 = 100;
+    public static PRIORITY_QUEUE_BASE_FEES: u64 = 1000; // 1000 satoshis
 
     public readonly tokenId: u256;
     private readonly _p0: StoredU256;
@@ -223,7 +224,6 @@ export class LiquidityQueue {
             this.maxTokensPerReservation = antiBotMaximumTokensPerReservation;
         }
 
-        // And save.
         this.save();
     }
 
@@ -260,7 +260,6 @@ export class LiquidityQueue {
 
         const provider: Provider = getProvider(providerId);
         const oldLiquidity: u128 = provider.liquidity;
-
         if (!u128.lt(oldLiquidity, SafeMath.sub128(u128.Max, amountIn))) {
             throw new Revert('Liquidity overflow. Please add a smaller amount.');
         }
@@ -345,8 +344,15 @@ export class LiquidityQueue {
 
         // If priority, we must remove oldTax + newTax from provider's liquidity and total reserves
         if (usePriorityQueue) {
-            const totalTax: u128 = SafeMath.add128(oldTax, newTax);
+            // Verify fees collected are enough to use priority queue
+            const feesCollected: u64 = getTotalFeeCollected();
+            const costPriorityQueue: u64 = this.getCostPriorityFee();
 
+            if (feesCollected < costPriorityQueue) {
+                throw new Revert('Not enough fees collected to use priority queue.');
+            }
+
+            const totalTax: u128 = SafeMath.add128(oldTax, newTax);
             if (!totalTax.isZero()) {
                 // Remove tax from provider liquidity
                 provider.liquidity = SafeMath.sub128(provider.liquidity, totalTax);
@@ -357,8 +363,6 @@ export class LiquidityQueue {
                 // Transfer the total tax from contract to dead
                 TransferHelper.safeTransfer(this.token, Address.dead(), totalTax.toU256());
             }
-
-            // TODO: Verify BTC fees for using priority queue if required.
         }
 
         // Update EWMA and block quote
@@ -702,14 +706,14 @@ export class LiquidityQueue {
         this.lastUpdateBlockEWMA_L = Blockchain.block.numberU64;
     }
 
-    public getCostPriorityFee(): u128 {
+    public getCostPriorityFee(): u64 {
         const length = this._priorityQueue.getLength();
         const startingIndex = this._priorityQueue.startingIndex();
         const realLength = length - startingIndex;
 
-        return SafeMath.mul128(
-            u128.fromU64(realLength),
-            u128.fromU64(LiquidityQueue.PRICE_PER_USER_IN_PRIORITY_QUEUE_BTC),
+        return (
+            realLength * LiquidityQueue.PRICE_PER_USER_IN_PRIORITY_QUEUE_BTC +
+            LiquidityQueue.PRIORITY_QUEUE_BASE_FEES
         );
     }
 
