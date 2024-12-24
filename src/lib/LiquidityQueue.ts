@@ -38,6 +38,7 @@ import { MAX_RESERVATION_AMOUNT_PROVIDER } from '../data-types/UserLiquidity';
 import { ReservationCreatedEvent } from '../events/ReservationCreatedEvent';
 import { SwapExecutedEvent } from '../events/SwapExecutedEvent';
 import { getTotalFeeCollected } from '../utils/OrderBookUtils';
+import { FeeManager } from './FeeManager';
 
 export class LiquidityQueue {
     public static RESERVATION_EXPIRE_AFTER: u64 = 5;
@@ -48,9 +49,6 @@ export class LiquidityQueue {
 
     public static PERCENT_TOKENS_FOR_PRIORITY_QUEUE: u128 = u128.fromU32(30); // 3%
     public static PERCENT_TOKENS_FOR_PRIORITY_FACTOR: u128 = u128.fromU32(1000); // 100%
-
-    public static PRICE_PER_USER_IN_PRIORITY_QUEUE_BTC: u64 = 100;
-    public static PRIORITY_QUEUE_BASE_FEES: u64 = 1000; // 1000 satoshis
 
     public readonly tokenId: u256;
     private readonly _p0: StoredU256;
@@ -254,10 +252,6 @@ export class LiquidityQueue {
         usePriorityQueue: boolean,
         initialLiquidity: boolean = false,
     ): void {
-        if (u256.eq(providerId, this._initialLiquidityProvider.value) && !initialLiquidity) {
-            throw new Revert('You can only add liquidity to the initial provider once.');
-        }
-
         const provider: Provider = getProvider(providerId);
         const oldLiquidity: u128 = provider.liquidity;
         if (!u128.lt(oldLiquidity, SafeMath.sub128(u128.Max, amountIn))) {
@@ -273,6 +267,10 @@ export class LiquidityQueue {
         const quote = this.quote();
         if (quote.isZero()) {
             throw new Revert('Quote is zero. Please set P0 if you are the owner of the token.');
+        }
+
+        if (u256.eq(providerId, this._initialLiquidityProvider.value) && !initialLiquidity) {
+            throw new Revert(`You can only add liquidity to the initial provider once.`);
         }
 
         const liquidityInSatoshis: u256 = SafeMath.div(amountIn.toU256(), quote);
@@ -719,8 +717,8 @@ export class LiquidityQueue {
         const realLength = length - startingIndex;
 
         return (
-            realLength * LiquidityQueue.PRICE_PER_USER_IN_PRIORITY_QUEUE_BTC +
-            LiquidityQueue.PRIORITY_QUEUE_BASE_FEES
+            realLength * FeeManager.PRICE_PER_USER_IN_PRIORITY_QUEUE_BTC +
+            FeeManager.PRIORITY_QUEUE_BASE_FEE
         );
     }
 

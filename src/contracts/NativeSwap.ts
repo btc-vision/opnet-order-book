@@ -17,6 +17,7 @@ import { ripemd160, sha256 } from '@btc-vision/btc-runtime/runtime/env/global';
 import { quoter, Quoter } from '../math/Quoter';
 import { getProvider, saveAllProviders } from '../lib/Provider';
 import { getTotalFeeCollected } from '../utils/OrderBookUtils';
+import { FeeManager } from '../lib/FeeManager';
 
 /**
  * OrderBook contract for the OP_NET order book system.
@@ -24,7 +25,6 @@ import { getTotalFeeCollected } from '../utils/OrderBookUtils';
 @final
 export class NativeSwap extends OP_NET {
     private readonly minimumTradeSize: u256 = u256.fromU32(10_000); // The minimum trade size in satoshis.
-    private readonly RESERVATION_BASE_FEE: u64 = 10_000; // The base fee for reservations in satoshis.
 
     public constructor() {
         super();
@@ -34,7 +34,11 @@ export class NativeSwap extends OP_NET {
         return encodeSelector('owner');
     }
 
-    public override onDeployment(_calldata: Calldata): void {}
+    public override onDeployment(_calldata: Calldata): void {
+        FeeManager.onDeploy();
+
+        Blockchain.log(`On deployment`);
+    }
 
     public override onExecutionCompleted(): void {
         saveAllProviders();
@@ -52,6 +56,8 @@ export class NativeSwap extends OP_NET {
                 return this.removeLiquidity(calldata);
             case encodeSelector('createPool'): // aka enable trading
                 return this.createPool(calldata);
+            case encodeSelector('setFees'):
+                return this.setFees(calldata);
             /** Readable methods */
             case encodeSelector('getReserve'):
                 return this.getReserve(calldata);
@@ -66,6 +72,14 @@ export class NativeSwap extends OP_NET {
             default:
                 return super.execute(method, calldata);
         }
+    }
+
+    private setFees(calldata: Calldata): BytesWriter {
+        FeeManager.RESERVATION_BASE_FEE = calldata.readU64();
+        FeeManager.PRIORITY_QUEUE_BASE_FEE = calldata.readU64();
+        FeeManager.PRICE_PER_USER_IN_PRIORITY_QUEUE_BTC = calldata.readU64();
+
+        return new BytesWriter(1);
     }
 
     private getProviderDetails(calldata: Calldata): BytesWriter {
@@ -296,7 +310,7 @@ export class NativeSwap extends OP_NET {
      * Key steps:
      * 1. Validate input parameters (token, `maximumAmountIn`, `minimumAmountOut`).
      * 2. Check for a minimum trade size.
-     * 3. Ensure enough fees (`this.RESERVATION_BASE_FEE`) are paid by the user (in satoshis).
+     * 3. Ensure enough fees (`FeeManager.RESERVATION_BASE_FEE`) are paid by the user (in satoshis).
      * 4. Call `queue.reserveLiquidity(...)`, which:
      *    - Possibly triggers anti-bot checks inside `LiquidityQueue`
      *    - Reserves tokens across priority or normal queues
@@ -345,7 +359,7 @@ export class NativeSwap extends OP_NET {
         }
 
         const totalFee = getTotalFeeCollected();
-        if (totalFee < this.RESERVATION_BASE_FEE) {
+        if (totalFee < FeeManager.RESERVATION_BASE_FEE) {
             throw new Revert('ORDER_BOOK: Insufficient fees collected');
         }
 

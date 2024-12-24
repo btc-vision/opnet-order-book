@@ -1,5 +1,6 @@
 import { Blockchain } from '@btc-vision/btc-runtime/runtime';
 
+export const FEE_SETTINGS_POINTER: u16 = Blockchain.nextPointer;
 export const TOTAL_RESERVES_POINTER: u16 = Blockchain.nextPointer;
 
 export const PROVIDER_LIQUIDITY_POINTER: u16 = Blockchain.nextPointer;
