@@ -615,9 +615,8 @@ export class LiquidityQueue {
 
             satSpent = SafeMath.add(satSpent, costInSatoshis);
 
-            // TODO: Change this to a u32 array instead of u16. and add checks.
             if (provider.indexedAt > u32.MAX_VALUE) {
-                throw new Revert('IndexedAt is bigger than u16 (change to u32)');
+                throw new Revert('IndexedAt is bigger than u32.MAX_VALUE');
             }
 
             // Add reservation to the reservation list
@@ -749,7 +748,7 @@ export class LiquidityQueue {
                     provider.indexedAt + this._priorityQueue.startingIndex(),
                 );
             } else {
-                this._queue.delete(provider.indexedAt + this._priorityQueue.startingIndex());
+                this._queue.delete(provider.indexedAt + this._queue.startingIndex());
             }
         }
 
