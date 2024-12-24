@@ -619,7 +619,7 @@ export class LiquidityQueue {
 
             // Add reservation to the reservation list
             reservation.reserveAtIndex(
-                provider.indexedAt,
+                <u32>provider.indexedAt,
                 reserveAmount.toU128(),
                 provider.isPriority(),
             );
@@ -885,9 +885,9 @@ export class LiquidityQueue {
                 const reservedPriority = reservation.getReservedPriority();
 
                 for (let j = 0; j < reservedIndexes.length; j++) {
-                    const providerIndex = reservedIndexes[j];
-                    const reservedAmount = reservedValues[j];
-                    const priority = reservedPriority[j];
+                    const providerIndex: u64 = reservedIndexes[j];
+                    const reservedAmount: u128 = reservedValues[j];
+                    const priority: bool = reservedPriority[j];
 
                     const providerId = priority
                         ? this._priorityQueue.get(providerIndex)
