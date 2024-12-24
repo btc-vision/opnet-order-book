@@ -30,8 +30,8 @@ export class NativeSwap extends OP_NET {
         super();
     }
 
-    private static get OWNER_SELECTOR(): Selector {
-        return encodeSelector('owner');
+    private static get DEPLOYER_SELECTOR(): Selector {
+        return encodeSelector('deployer');
     }
 
     public override onDeployment(_calldata: Calldata): void {
@@ -655,7 +655,7 @@ export class NativeSwap extends OP_NET {
 
     private getOwner(token: Address): Address {
         const calldata = new BytesWriter(4);
-        calldata.writeSelector(NativeSwap.OWNER_SELECTOR);
+        calldata.writeSelector(NativeSwap.DEPLOYER_SELECTOR);
 
         const response = Blockchain.call(token, calldata);
         return response.readAddress();

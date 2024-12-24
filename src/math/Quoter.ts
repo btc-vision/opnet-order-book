@@ -1,18 +1,22 @@
 import { u256 } from '@btc-vision/as-bignum/assembly';
-import { Blockchain, SafeMath } from '@btc-vision/btc-runtime/runtime';
+import { SafeMath } from '@btc-vision/btc-runtime/runtime';
 
 export class Quoter {
     public static readonly SCALING_FACTOR: u256 = u256.fromU64(100_000_000);
     public static readonly BLOCK_RATE: u256 = u256.fromU64(4);
 
-    // Weighted smoothing params
+    // 1) Make alpha ~0.30 instead of ~0.12 (was 12_000_000 => now 30_000_000).
+    //    This means new data has ~30% weight each block interval (or aggregated intervals).
     public get a(): u256 {
-        return u256.fromU64(12_000_000);
+        // ~0.30 in scaled integer => 30,000,000
+        return u256.fromU64(30_000_000);
     }
 
-    // "k" controls how strongly netFlow changes price
+    // 2) Make k bigger (e.g. 150_000_000 => 1.50 in decimal),
+    //    so netFlow changes cause bigger price swings.
     public get k(): u256 {
-        return u256.fromU64(80_000_000);
+        // ~1.50 in scaled integer => 150,000,000
+        return u256.fromU64(150_000_000);
     }
 
     /**
@@ -37,10 +41,8 @@ export class Quoter {
     /**
      * @function updateEWMA
      * @description
-     *   This is your same EWMA decay function for any data series
-     *   (buy volume, sell volume, or liquidity).
      *   Over time, old values shrink according to (1 - alpha).
-     *   If blocksElapsed is large, we do extra decay.
+     *   Larger alpha => faster reaction to new data.
      */
     public updateEWMA(currentValue: u256, previousEWMA: u256, blocksElapsed: u256): u256 {
         if (blocksElapsed.isZero()) {
@@ -54,7 +56,6 @@ export class Quoter {
         const b: u256 = SafeMath.add(SafeMath.div(blocksElapsed, Quoter.BLOCK_RATE), u256.One);
 
         // decayFactor = min(pow(1 - alpha, b), SCALING_FACTOR)
-        // i.e. never exceed "1.0"
         const decayFactor: u256 = SafeMath.min(Quoter.pow(oneMinusAlpha, b), Quoter.SCALING_FACTOR);
 
         // Weighted old
@@ -76,106 +77,64 @@ export class Quoter {
      * @function calculatePrice
      * @description
      *   "token per sat" formula that depends on netFlow = (B - S)
-     *   and liquidity L.
-     *   If netFlow > 0 => high buy pressure => fewer tokens/sat.
-     *   If netFlow < 0 => high sells => more tokens/sat.
+     *   and liquidity L. If netFlow > 0 => fewer tokens/sat (more expensive).
+     *   If netFlow < 0 => more tokens/sat (cheaper).
      *
-     *   finalPrice = P0 / (1 + k * netFlow/ L)
+     *   finalPrice =
+     *      if (B > S):   P0 / (1 + k * (B-S)/L)
+     *      else:         P0 * (1 + k * (S-B)/L)
      *
-     *   All done in integer math with SCALING_FACTOR.
-     *
-     * @param {u256} P0   Reference or baseline “tokens per sat”
-     * @param {u256} EWMA_B  Smoothed buy volume
-     * @param {u256} EWMA_S  Smoothed sell volume
-     * @param {u256} EWMA_L  Smoothed liquidity/reserve
+     *   We do integer math with SCALING_FACTOR.
      */
     public calculatePrice(P0: u256, EWMA_B: u256, EWMA_S: u256, EWMA_L: u256): u256 {
+        // If no buy volume, fallback to a minimal price:
         if (EWMA_B.isZero()) {
             return SafeMath.div(P0, Quoter.SCALING_FACTOR);
         }
 
-        // 1) netFlow = B - S
+        // netFlow = B - S
         let netFlow: u256 = u256.Zero;
-        // If S > B in a naive sub, you'd get underflow in u256,
-        // so do a conditional:
         if (u256.gt(EWMA_B, EWMA_S)) {
             netFlow = SafeMath.sub(EWMA_B, EWMA_S);
-        } else {
-            // netFlow remains 0 if sells exceed buys
-            // (We’ll handle negative effect below by flipping logic.)
-            // Or do netFlow = -(S - B) in a signed sense. We'll handle that.
         }
+        // else netFlow = 0 in u256 => we handle negative side separately.
 
-        // 2) Adjusted L to avoid div by zero
+        // Avoid divide-by-zero for L
         const L: u256 = u256.gt(EWMA_L, u256.Zero) ? EWMA_L : u256.One;
 
-        // 3) ratio = netFlow / L, scaled
-        //    ratio is in [0, huge], but we want a "signed" notion
-        //    if netFlow < 0 => "price goes up"
-        //    We'll do a split path below for "B > S" vs "S >= B."
-        const ratioScaled: u256 = SafeMath.div(SafeMath.mul(netFlow, Quoter.SCALING_FACTOR), L);
-
-        // If netFlow == 0 => ratioScaled = 0 => price = P0 * big factor => token cheaper
-        // We'll handle that in "sell side" path.
-
-        ///////////////////////////////////////
-        // BUY SIDE: netFlow > 0
-        ///////////////////////////////////////
         let rawPrice: u256;
+
+        // (B > S) => price goes down
         if (u256.gt(EWMA_B, EWMA_S)) {
-            // finalPrice = P0 / (1 + k * ratio)
-            // We'll do it carefully in integer form:
+            // ratio = (k * netFlow / L)
+            const ratio = SafeMath.div(SafeMath.mul(this.k, netFlow), L);
 
-            // factor = k * ratioScaled / SCALING_FACTOR
-            const factor = SafeMath.div(SafeMath.mul(this.k, ratioScaled), Quoter.SCALING_FACTOR);
-
-            // denominator = SCALING_FACTOR + factor
-            const denominator = SafeMath.add(Quoter.SCALING_FACTOR, factor);
+            // denominator = SCALING_FACTOR + ratio
+            const denominator = SafeMath.add(Quoter.SCALING_FACTOR, ratio);
 
             // rawPrice = (P0 * SCALING_FACTOR) / denominator
-            // Because we want P0 / (1 + x) in scaled integer math:
             rawPrice = SafeMath.div(SafeMath.mul(P0, Quoter.SCALING_FACTOR), denominator);
 
-            // clamp to 1 if extremely small
             if (u256.lt(rawPrice, u256.One)) {
                 rawPrice = u256.One;
             }
         } else {
-            ///////////////////////////////////////
-            // SELL SIDE: netFlow <= 0 (S >= B)
-            ///////////////////////////////////////
-            // In that case, we want "tokens per sat" to go up
-            // if sells exceed buys. The simplest:
-            // finalPrice = P0 * (1 + k * ratioSells)
-            // where ratioSells = (S-B) / L
-            // We'll define ratioSells analogously:
+            // (S >= B) => price goes up (more tokens/sat)
+            const sellFlow = SafeMath.sub(EWMA_S, EWMA_B);
+            const ratioSells = SafeMath.div(SafeMath.mul(this.k, sellFlow), L);
 
-            const sellFlow = SafeMath.sub(EWMA_S, EWMA_B); // guaranteed >= 0
-            const ratioScaledSells: u256 = SafeMath.div(
-                SafeMath.mul(sellFlow, Quoter.SCALING_FACTOR),
-                L,
-            );
-
-            // factor = k * ratioScaledSells / SCALING_FACTOR
-            const factorSells = SafeMath.div(
-                SafeMath.mul(this.k, ratioScaledSells),
-                Quoter.SCALING_FACTOR,
-            );
-
-            // scaledFactor = SCALING_FACTOR + factorSells
-            const scaledFactor = SafeMath.add(Quoter.SCALING_FACTOR, factorSells);
+            const scaledFactor = SafeMath.add(Quoter.SCALING_FACTOR, ratioSells);
 
             // rawPrice = (P0 * scaledFactor) / SCALING_FACTOR
-            // Because we want P0*(1 + something).
             rawPrice = SafeMath.div(SafeMath.mul(P0, scaledFactor), Quoter.SCALING_FACTOR);
 
-            // Avoid overflow if factor is huge.
-            // Also clamp to at least 1
             if (u256.lt(rawPrice, u256.One)) {
                 rawPrice = u256.One;
             }
         }
 
+        // Return tokens/sat, dividing out one SCALING_FACTOR
+        // so final is "token per sat" in scaled units
         return SafeMath.div(rawPrice, Quoter.SCALING_FACTOR);
     }
 }
