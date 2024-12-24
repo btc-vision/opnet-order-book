@@ -424,9 +424,12 @@ export class LiquidityQueue {
             const priority = reservedPriority[i];
 
             // Retrieve the provider
-            const providerId = priority
-                ? this._priorityQueue.get(providerIndex)
-                : this._queue.get(providerIndex);
+            const isInitialLiquidity = providerIndex === u32.MAX_VALUE;
+            const providerId = isInitialLiquidity
+                ? this._initialLiquidityProvider.value
+                : priority
+                  ? this._priorityQueue.get(providerIndex)
+                  : this._queue.get(providerIndex);
 
             if (providerId.isZero()) throw new Revert(`Invalid provider at index ${providerIndex}`);
 
@@ -440,7 +443,7 @@ export class LiquidityQueue {
             );
 
             if (satoshisSent.isZero()) {
-                Blockchain.log(`Expected amount ${satoshisSent} from ${provider.btcReceiver}`);
+                //Blockchain.log(`Expected amount ${satoshisSent} from ${provider.btcReceiver}`);
 
                 // Buyer didn't send any satoshis to this provider
                 this.restoreReservedLiquidityForProvider(provider, reservedAmount);
@@ -589,7 +592,7 @@ export class LiquidityQueue {
             let costInSatoshis: u256 = SafeMath.div(reserveAmount, currentPrice);
             const amountLeftInSatoshis: u256 = SafeMath.sub(maxCostInSatoshis, costInSatoshis);
             if (u256.lt(amountLeftInSatoshis, LiquidityQueue.MINIMUM_PROVIDER_RESERVATION_AMOUNT)) {
-                // We have to check for remaning dust.
+                // We have to check for remaining dust.
                 costInSatoshis = maxCostInSatoshis;
                 reserveAmount = providerLiquidity;
 
@@ -620,7 +623,7 @@ export class LiquidityQueue {
             // Add reservation to the reservation list
             reservation.reserveAtIndex(
                 <u32>provider.indexedAt,
-                reserveAmount.toU128(),
+                reservedAmountU128,
                 provider.isPriority(),
             );
             c++;
@@ -740,10 +743,14 @@ export class LiquidityQueue {
             TransferHelper.safeTransfer(this.token, Address.dead(), provider.liquidity.toU256());
         }
 
-        if (provider.isPriority()) {
-            this._priorityQueue.delete(provider.indexedAt + this._priorityQueue.startingIndex());
-        } else {
-            this._queue.delete(provider.indexedAt + this._priorityQueue.startingIndex());
+        if (!u256.eq(provider.providerId, this._initialLiquidityProvider.value)) {
+            if (provider.isPriority()) {
+                this._priorityQueue.delete(
+                    provider.indexedAt + this._priorityQueue.startingIndex(),
+                );
+            } else {
+                this._queue.delete(provider.indexedAt + this._priorityQueue.startingIndex());
+            }
         }
 
         provider.reset();
@@ -867,7 +874,6 @@ export class LiquidityQueue {
         let totalReservedAmount: u256 = u256.Zero;
         let updatedOne: boolean = false;
         for (let blockNumber = lastPurgedBlock; blockNumber < maxBlockToPurge; blockNumber++) {
-            //Blockchain.log(`Purging reservations for block ${blockNumber}`);
             const reservationList = this.getReservationListForBlock(blockNumber);
             const reservationIds = reservationList.getAll(0, reservationList.getLength() as u32);
 
@@ -889,15 +895,28 @@ export class LiquidityQueue {
                     const reservedAmount: u128 = reservedValues[j];
                     const priority: bool = reservedPriority[j];
 
-                    const providerId = priority
-                        ? this._priorityQueue.get(providerIndex)
-                        : this._queue.get(providerIndex);
+                    const isInitialLiquidity = providerIndex === u32.MAX_VALUE;
+                    const providerId = isInitialLiquidity
+                        ? this._initialLiquidityProvider.value
+                        : priority
+                          ? this._priorityQueue.get(providerIndex)
+                          : this._queue.get(providerIndex);
 
                     const provider = getProvider(providerId);
                     provider.indexedAt = providerIndex;
 
+                    if (u128.lt(provider.reserved, reservedAmount)) {
+                        throw new Revert(
+                            'Impossible state: Reserved amount is bigger than the provider reserved amount',
+                        );
+                    }
+
                     // Decrease provider's reserved amount
                     provider.reserved = SafeMath.sub128(provider.reserved, reservedAmount);
+
+                    //Blockchain.log(
+                    //    `(Purge) Provider ${provider.btcReceiver} reserved ${provider.reserved} liquidity ${provider.liquidity}`,
+                    //);
 
                     // Check if provider's available liquidity is less than minimum required
                     const availableLiquidity = SafeMath.sub128(
@@ -915,10 +934,13 @@ export class LiquidityQueue {
                         //    `Provider ${providerId} has less than minimum liquidity. Destroying provider. (priority: ${priority}, index: ${providerIndex})`,
                         //);
                         // Dust is not reserved, so we must subtract it from the total reserves.
-                        if (provider.isPriority()) {
-                            this._priorityQueue.delete(providerIndex);
-                        } else {
-                            this._queue.delete(providerIndex);
+
+                        if (!isInitialLiquidity) {
+                            if (provider.isPriority()) {
+                                this._priorityQueue.delete(providerIndex);
+                            } else {
+                                this._queue.delete(providerIndex);
+                            }
                         }
 
                         // Destroy the provider
@@ -1184,6 +1206,7 @@ export class LiquidityQueue {
                 );
 
                 if (!availableLiquidity.isZero()) {
+                    initProvider.indexedAt = u32.MAX_VALUE;
                     return initProvider;
                 }
             }
