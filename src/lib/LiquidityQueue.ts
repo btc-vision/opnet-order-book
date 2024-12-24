@@ -612,9 +612,14 @@ export class LiquidityQueue {
 
             satSpent = SafeMath.add(satSpent, costInSatoshis);
 
+            // TODO: Change this to a u32 array instead of u16. and add checks.
+            if (provider.indexedAt > u32.MAX_VALUE) {
+                throw new Revert('IndexedAt is bigger than u16 (change to u32)');
+            }
+
             // Add reservation to the reservation list
             reservation.reserveAtIndex(
-                <u16>provider.indexedAt, // TODO: Change this to a u32 array instead of u16. and add checks.
+                provider.indexedAt,
                 reserveAmount.toU128(),
                 provider.isPriority(),
             );
