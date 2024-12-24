@@ -49,6 +49,10 @@ class FeeManagerBase {
         this.SETTINGS.set(2, value);
     }
 
+    public save(): void {
+        this.SETTINGS.save();
+    }
+
     public onDeploy(): void {
         this.RESERVATION_BASE_FEE = 10_000;
         this.PRIORITY_QUEUE_BASE_FEE = 50_000;

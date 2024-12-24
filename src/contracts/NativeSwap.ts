@@ -36,11 +36,11 @@ export class NativeSwap extends OP_NET {
 
     public override onDeployment(_calldata: Calldata): void {
         FeeManager.onDeploy();
-
-        Blockchain.log(`On deployment`);
     }
 
     public override onExecutionCompleted(): void {
+        FeeManager.save();
+
         saveAllProviders();
     }
 
