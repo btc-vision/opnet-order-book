@@ -88,7 +88,7 @@ export class Quoter {
      */
     public calculatePrice(P0: u256, EWMA_B: u256, EWMA_S: u256, EWMA_L: u256): u256 {
         // If no buy volume, fallback to a minimal price:
-        if (EWMA_B.isZero()) {
+        if (EWMA_S.isZero()) {
             return SafeMath.div(P0, Quoter.SCALING_FACTOR);
         }
 
