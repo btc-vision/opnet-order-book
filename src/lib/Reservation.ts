@@ -88,10 +88,6 @@ export class Reservation {
         return this.userReservation.getExpirationBlock() > 0;
     }
 
-    //public setStartingIndex(normal: u64, priority: u64): void {
-    //    this.userReservation.setStartingIndex(normal, priority);
-    //}
-
     public valid(): bool {
         return !this.expired() && this.reservedIndexes.getLength() > 0;
     }

@@ -11,9 +11,7 @@ import {
 export class UserReservation {
     private readonly u256Pointer: u256;
 
-    // Internal fields representing the components of UserReservation
     private expirationBlock: u64 = 0;
-    //private startingIndex: u64 = 0;
     private priorityIndex: u64 = 0;
 
     // Flags to manage state
@@ -118,9 +116,6 @@ export class UserReservation {
             // Unpack expirationBlock (8 bytes, little endian)
             this.expirationBlock = reader.readU64();
 
-            // Unpack startingIndex (8 bytes, little endian)
-            //this.startingIndex = reader.readU64();
-
             // Unpack priorityIndex (8 bytes, little endian)
             this.priorityIndex = reader.readU64();
 
@@ -140,9 +135,6 @@ export class UserReservation {
 
         // Pack expirationBlock (8 bytes, little endian)
         writer.writeU64(this.expirationBlock);
-
-        // Pack startingIndex (8 bytes, little endian)
-        //writer.writeU64(this.startingIndex);
 
         // Pack priorityIndex (8 bytes, little endian)
         writer.writeU64(this.priorityIndex);

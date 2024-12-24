@@ -11,7 +11,8 @@ export const LIQUIDITY_QUEUE_POINTER: u16 = Blockchain.nextPointer;
 export const LIQUIDITY_PRIORITY_QUEUE_POINTER: u16 = Blockchain.nextPointer;
 export const LIQUIDITY_RESERVED_POINTER: u16 = Blockchain.nextPointer;
 
-export const LIQUIDITY_EWMA_V_POINTER: u16 = Blockchain.nextPointer;
+export const LIQUIDITY_EWMA_B_POINTER: u16 = Blockchain.nextPointer;
+export const LIQUIDITY_EWMA_S_POINTER: u16 = Blockchain.nextPointer;
 export const LIQUIDITY_EWMA_L_POINTER: u16 = Blockchain.nextPointer;
 export const LIQUIDITY_EWMA_P0_POINTER: u16 = Blockchain.nextPointer;
 export const LIQUIDITY_EWMA_LAST_UPDATE_BLOCK_POINTER: u16 = Blockchain.nextPointer;
