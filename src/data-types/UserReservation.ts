@@ -1,4 +1,4 @@
-import { u256 } from 'as-bignum/assembly';
+import { u256 } from '@btc-vision/as-bignum/assembly';
 import {
     Blockchain,
     BytesReader,
@@ -11,9 +11,8 @@ import {
 export class UserReservation {
     private readonly u256Pointer: u256;
 
-    // Internal fields representing the components of UserReservation
     private expirationBlock: u64 = 0;
-    private startingIndex: u64 = 0;
+    private priorityIndex: u64 = 0;
 
     // Flags to manage state
     private isLoaded: bool = false;
@@ -60,31 +59,6 @@ export class UserReservation {
     }
 
     /**
-     * @method getStartingIndex
-     * @description Retrieves the starting index.
-     * @returns {u64} - The starting index.
-     */
-    @inline
-    public getStartingIndex(): u64 {
-        this.ensureValues();
-        return this.startingIndex;
-    }
-
-    /**
-     * @method setStartingIndex
-     * @description Sets the starting index.
-     * @param {u64} index - The starting index to set.
-     */
-    @inline
-    public setStartingIndex(index: u64): void {
-        this.ensureValues();
-        if (this.startingIndex != index) {
-            this.startingIndex = index;
-            this.isChanged = true;
-        }
-    }
-
-    /**
      * @method save
      * @description Persists the cached values to storage if any have been modified.
      */
@@ -103,7 +77,6 @@ export class UserReservation {
     @inline
     public reset(): void {
         this.expirationBlock = 0;
-        this.startingIndex = 0;
         this.isChanged = true;
     }
 
@@ -115,7 +88,7 @@ export class UserReservation {
     @inline
     public toString(): string {
         this.ensureValues();
-        return `ExpirationBlock: ${this.expirationBlock}, StartingIndex: ${this.startingIndex}`;
+        return `ExpirationBlock: ${this.expirationBlock}`;
     }
 
     /**
@@ -143,8 +116,8 @@ export class UserReservation {
             // Unpack expirationBlock (8 bytes, little endian)
             this.expirationBlock = reader.readU64();
 
-            // Unpack startingIndex (8 bytes, little endian)
-            this.startingIndex = reader.readU64();
+            // Unpack priorityIndex (8 bytes, little endian)
+            this.priorityIndex = reader.readU64();
 
             // Skip remaining bytes (if any)
             this.isLoaded = true;
@@ -163,8 +136,8 @@ export class UserReservation {
         // Pack expirationBlock (8 bytes, little endian)
         writer.writeU64(this.expirationBlock);
 
-        // Pack startingIndex (8 bytes, little endian)
-        writer.writeU64(this.startingIndex);
+        // Pack priorityIndex (8 bytes, little endian)
+        writer.writeU64(this.priorityIndex);
 
         return u256.fromBytes(writer.getBuffer(), true);
     }

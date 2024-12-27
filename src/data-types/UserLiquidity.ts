@@ -1,4 +1,4 @@
-import { u128, u256 } from 'as-bignum/assembly';
+import { u128, u256 } from '@btc-vision/as-bignum/assembly';
 import {
     Blockchain,
     BytesReader,
@@ -236,7 +236,7 @@ export class UserLiquidity {
                 bytes[i] = reader.readU8();
             }
 
-            this.reservedAmount = u128.fromBytes(bytes, true);
+            this.reservedAmount = u128.fromBytes(bytes, false);
 
             this.isLoaded = true;
         }
@@ -250,18 +250,25 @@ export class UserLiquidity {
      */
     private packValues(): u256 {
         const writer = new BytesWriter(32);
-
         const flag: u8 =
             (this.pendingReservationsFlag << 1) | this.activeFlag | (this.priorityFlag << 2);
+
         writer.writeU8(flag);
 
         // Pack liquidityAmount (16 bytes, little endian)
         writer.writeU128(this.liquidityAmount);
 
-        const bytes = this.reservedAmount.toBytes(true);
+        const bytes = this.reservedAmount.toBytes(false);
         for (let i: i32 = 0; i < 15; i++) {
             writer.writeU8(bytes[i] || 0);
         }
+
+        //bytes[15] = 0;
+
+        //const checksum = u128.fromBytes(bytes, false);
+        //if (!u128.eq(checksum, this.reservedAmount)) {
+        //    throw new Revert('Precision loss in packing reserved amount');
+        //}
 
         return u256.fromBytes(writer.getBuffer());
     }

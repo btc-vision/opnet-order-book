@@ -1,12 +1,12 @@
 import { Blockchain } from '@btc-vision/btc-runtime/runtime';
-import { EWMA } from './contracts/EWMA';
+import { NativeSwap } from './contracts/NativeSwap';
 
 // DO NOT TOUCH TO THIS.
 Blockchain.contract = () => {
     // ONLY CHANGE THE CONTRACT CLASS NAME.
     // DO NOT ADD CUSTOM LOGIC HERE.
 
-    return new EWMA();
+    return new NativeSwap();
 };
 
 // VERY IMPORTANT
