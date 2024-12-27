@@ -39,7 +39,7 @@ and providers against exploits and irrecoverable token loss.
 
 ### **Reservation Model**
 
-**Problem**: When performing cross-chain or dual-layer swaps (in this case, with real on-chain BTC inputs), you
+**Problem**: When performing on chain or dual-layer swaps (in this case, with real on-chain BTC inputs), you
 cannot revert a Bitcoin transaction once it's been broadcast to miners. If the AMM tries to do a typical “single
 function call swap” and something fails, the BTC that was already sent can't be undone.
 
@@ -185,7 +185,7 @@ and the tokens are freed.
 The contract includes checks like `maxTokensPerReservation`, `STRICT_MINIMUM_PROVIDER_RESERVATION_AMOUNT`, a 5-block
 cap (
 `maxReserves5BlockPercent`), etc. These constraints ensure that no single user can hog all the liquidity in a short
-time window and manipulate cross-chain settlement.
+time window and manipulate on chain settlement.
 
 #### Partial Reverts Inside the Contract
 
