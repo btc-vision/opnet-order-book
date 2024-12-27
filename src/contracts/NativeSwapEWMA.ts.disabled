@@ -241,7 +241,7 @@ export class NativeSwap extends OP_NET {
      * 4. Saves the updated queue state.
      *
      * Note that if multiple users add liquidity, each user is tracked as a separate provider. The
-     * liquidity from all providers is aggregated in the contract’s internal structures.
+     * liquidity from all providers is aggregated in the contract's internal structures.
      *
      * @param {Address} token - The address of the token to which liquidity is being added.
      * @param {string} receiver - The BTC receiver address (must be a valid Bitcoin address).
@@ -388,7 +388,7 @@ export class NativeSwap extends OP_NET {
      * 4. Checks if `tokensOut` exceeds available liquidity; if so, caps `tokensOut` and adjusts the
      *    required `satoshisIn`.
      * 5. Returns `(tokensOut, requiredSatoshis, currentPrice)` so callers know how many tokens
-     *    they’d receive, how many satoshis are required, and what the price was.
+     *    they'd receive, how many satoshis are required, and what the price was.
      *
      * @param {Address} token - The token address for which to obtain a quote.
      * @param {u256} satoshisIn - The amount of BTC (in satoshis) the user plans to spend.
@@ -397,7 +397,7 @@ export class NativeSwap extends OP_NET {
      * A `BytesWriter` containing:
      *  - `tokensOut` (u256)
      *  - `requiredSatoshis` (u256)
-     *  - `currentPrice` (u256, the contract’s approximate exchange rate)
+     *  - `currentPrice` (u256, the contract's approximate exchange rate)
      *
      * @throws {Revert} If `token` is invalid, `satoshisIn` < `this.minimumTradeSize`, or the price is zero.
      * @throws {Revert} If no liquidity is available and thus `tokensOut` would be zero.
@@ -585,13 +585,13 @@ export class NativeSwap extends OP_NET {
      *
      * Process Flow:
      * 1. Validate the token address.
-     * 2. Retrieve the user’s existing reservation (if any).
+     * 2. Retrieve the user's existing reservation (if any).
      * 3. Check if the reservation is within its valid block range.
      *    - If expired, revert or re-release tokens to providers.
      * 4. Call `queue.swap(...)`, which:
      *    - Finds each provider with reserved tokens for this user
      *    - Transfers out the correct amount of tokens to the user
-     *    - Updates each provider’s liquidity
+     *    - Updates each provider's liquidity
      *    - Emits a SwapExecutedEvent
      * 5. Save the updated queue state.
      *

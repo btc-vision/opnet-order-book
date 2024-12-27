@@ -466,7 +466,7 @@ export class LiquidityQueue {
             );
 
             if (satoshisSent.isZero()) {
-                // no satoshis => nothing to buy => restore provider’s reserved
+                // no satoshis => nothing to buy => restore provider's reserved
                 this.restoreReservedLiquidityForProvider(provider, reservedAmount);
                 continue;
             }
@@ -601,11 +601,11 @@ export class LiquidityQueue {
                 provider.reserved,
             ).toU256();
 
-            // Convert the provider’s token liquidity to "max possible satoshis"
+            // Convert the provider's token liquidity to "max possible satoshis"
             // by dividing tokens by (tokens/sat) => integer sat.
             const maxCostInSatoshis: u256 = SafeMath.div(providerLiquidity, currentPrice);
 
-            // If it’s below the strict min or otherwise dust, reset or skip, etc.
+            // If it's below the strict min or otherwise dust, reset or skip, etc.
             if (
                 u256.lt(
                     maxCostInSatoshis,
@@ -622,7 +622,7 @@ export class LiquidityQueue {
 
             // TODO: Make sure this works correctly, we can only reserve 15 bytes.
             // Figure out how many tokens we *want* to reserve from this provider.
-            // That is whichever is smaller: provider’s available tokens, the user’s leftover tokensWanted,
+            // That is whichever is smaller: provider's available tokens, the user's leftover tokensWanted,
             // and some global MAX_RESERVATION_AMOUNT_PROVIDER, etc.
             let reserveAmount: u256 = SafeMath.min(
                 SafeMath.min(providerLiquidity, tokensRemaining),
@@ -650,7 +650,7 @@ export class LiquidityQueue {
                 continue;
             }
 
-            // Now update the provider’s reserved amounts
+            // Now update the provider's reserved amounts
             const reserveAmountU128 = reserveAmount.toU128();
             provider.reserved = SafeMath.add128(provider.reserved, reserveAmountU128);
 

@@ -391,7 +391,7 @@ export class LiquidityQueue {
                 throw new Revert(`Initial provider can only add once, if not initialLiquidity.`);
             }
             //
-            // Convert user’s tokens to satoshi value for the "minimum liquidity in sat" check:
+            // Convert user's tokens to satoshi value for the "minimum liquidity in sat" check:
             //
             const liquidityInSatoshis: u256 = this.tokensToSatoshis(
                 amountIn.toU256(),
@@ -904,7 +904,7 @@ export class LiquidityQueue {
         const reservedRatio: u256 = SafeMath.div(SafeMath.mul(reservedAmount, a), totalLiquidity);
 
         // 2) leftoverRatio = maxReserves5BlockPercent - reservedRatio
-        //    Make sure it doesn’t go negative => clamp at zero
+        //    Make sure it doesn't go negative => clamp at zero
         let leftoverRatio: u256 = SafeMath.sub(
             u256.fromU64(this.maxReserves5BlockPercent),
             reservedRatio,
