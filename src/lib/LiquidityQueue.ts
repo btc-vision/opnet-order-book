@@ -276,6 +276,14 @@ export class LiquidityQueue {
         this._settings.set(1, value);
     }
 
+    public get maxReserves5BlockPercent(): u64 {
+        return this._settings.get(3);
+    }
+
+    public set maxReserves5BlockPercent(value: u64) {
+        this._settings.set(3, value);
+    }
+
     // This ensures we don't lose precision if B < T.
     public get SCALE_FACTOR(): u256 {
         if (this.calculatedScaleFactor.isZero()) {
@@ -296,6 +304,7 @@ export class LiquidityQueue {
         receiver: string,
         antiBotEnabledFor: u16,
         antiBotMaximumTokensPerReservation: u256,
+        maxReservesIn5BlocksPercent: u16,
     ): void {
         this.p0 = floorPrice;
         this._initialLiquidityProvider.value = providerId;
@@ -303,6 +312,9 @@ export class LiquidityQueue {
         const initialLiquidityU256 = initialLiquidity.toU256();
         this.virtualBTCReserve = SafeMath.div(initialLiquidityU256, floorPrice);
         this.virtualTokenReserve = initialLiquidityU256;
+
+        // set max reserves in 5 blocks
+        this.maxReserves5BlockPercent = <u64>maxReservesIn5BlocksPercent;
 
         // add initial liquidity
         this.addLiquidity(providerId, initialLiquidity, receiver, false, true);
@@ -612,13 +624,13 @@ export class LiquidityQueue {
             throw new Revert('Reservation already active');
         }
 
-        // currentQuoteScaled is scaled by 10^(TOKEN_DECIMALS - BTC_DECIMALS)
-        const currentQuoteScaled = this.quote();
-        if (currentQuoteScaled.isZero()) {
+        // currentQuote is scaled by 10^(TOKEN_DECIMALS - BTC_DECIMALS)
+        const currentQuote = this.quote();
+        if (currentQuote.isZero()) {
             throw new Revert('Impossible state: Token is worth infinity');
         }
 
-        let tokensRemaining: u256 = this.satoshisToTokens(maximumAmountIn, currentQuoteScaled);
+        let tokensRemaining: u256 = this.satoshisToTokens(maximumAmountIn, currentQuote);
 
         // anti-bot
         if (Blockchain.block.numberU64 <= this.antiBotExpirationBlock) {
@@ -636,21 +648,38 @@ export class LiquidityQueue {
             tokensRemaining = totalAvailableLiquidity;
         }
 
-        //Blockchain.log(
-        //    `totalAvailableLiquidity: ${totalAvailableLiquidity}, tokensRemaining: ${tokensRemaining}, maximumAmountIn: ${maximumAmountIn}, quote: ${currentQuoteScaled}, total tokens: ${this.satoshisToTokens(maximumAmountIn, currentQuoteScaled)}`,
-        //);
+        const maxTokensLeftBeforeCap = this.getMaximumTokensLeftBeforeCap();
+        tokensRemaining = SafeMath.min(tokensRemaining, maxTokensLeftBeforeCap);
 
-        //if (tokensRemaining.isZero()) {
-        //    return u256.Zero;
-        //}
+        if (tokensRemaining.isZero()) {
+            throw new Revert('Not enough liquidity available');
+        }
+
+        const satCostTokenRemaining = this.tokensToSatoshis(tokensRemaining, currentQuote);
+        if (
+            u256.lt(satCostTokenRemaining, maximumAmountIn) ||
+            u256.lt(tokensRemaining, LiquidityQueue.MINIMUM_LIQUIDITY_IN_SAT_VALUE_ADD_LIQUIDITY)
+        ) {
+            throw new Revert(`Too little liquidity available ${satCostTokenRemaining}`);
+        }
 
         let tokensReserved: u256 = u256.Zero;
         let satSpent: u256 = u256.Zero;
         let lastId: u64 = 0;
 
+        let i: u32 = 0;
         while (!tokensRemaining.isZero()) {
+            i++;
+
             const provider = this.getNextProviderWithLiquidity();
             if (provider === null) {
+                if (i === 1) {
+                    throw new Revert(
+                        `Impossible state: no providers with liquidity even if totalAvailableLiquidity > 0`,
+                    );
+                }
+
+                //Blockchain.log(`No more providers with liquidity`);
                 break;
             }
 
@@ -665,9 +694,10 @@ export class LiquidityQueue {
                 provider.reserved,
             ).toU256();
 
-            // maxCostInSatoshis = how many satoshis it would cost to buy all 'providerLiquidity'
-            // tokensToSatoshis() does: (providerLiquidity * scaledPrice) / SCALE_FACTOR
-            const maxCostInSatoshis = this.tokensToSatoshis(providerLiquidity, currentQuoteScaled);
+            const maxCostInSatoshis = this.tokensToSatoshis(providerLiquidity, currentQuote);
+            //Blockchain.log(
+            //    `maxCostInSatoshis: ${maxCostInSatoshis}, providerLiquidity: ${providerLiquidity}, reserved: ${provider.reserved}, currentQuoteScaled: ${currentQuote}`,
+            //);
             if (
                 u256.lt(
                     maxCostInSatoshis,
@@ -686,7 +716,7 @@ export class LiquidityQueue {
                 MAX_RESERVATION_AMOUNT_PROVIDER.toU256(),
             );
 
-            let costInSatoshis = this.tokensToSatoshis(reserveAmount, currentQuoteScaled);
+            let costInSatoshis = this.tokensToSatoshis(reserveAmount, currentQuote);
             const leftoverSats = SafeMath.sub(maxCostInSatoshis, costInSatoshis);
 
             // If leftover satoshis < MINIMUM_PROVIDER_RESERVATION_AMOUNT => just take everything
@@ -695,7 +725,7 @@ export class LiquidityQueue {
             }
 
             // Recompute how many tokens that cost can buy
-            reserveAmount = this.satoshisToTokens(costInSatoshis, currentQuoteScaled);
+            reserveAmount = this.satoshisToTokens(costInSatoshis, currentQuote);
             if (reserveAmount.isZero()) {
                 continue;
             }
@@ -727,7 +757,7 @@ export class LiquidityQueue {
         // If we didn't reserve enough
         if (u256.lt(tokensReserved, minimumAmountOut)) {
             throw new Revert(
-                `Not enough liquidity reserved want ${minimumAmountOut} got ${tokensReserved}, `,
+                `Not enough liquidity reserved want ${minimumAmountOut} got ${tokensReserved}, spent ${satSpent}, remaining ${tokensRemaining}, quote ${currentQuote}`,
             );
         }
 
@@ -856,6 +886,38 @@ export class LiquidityQueue {
         this.deltaTokensSell = u256.Zero;
 
         this.lastVirtualUpdateBlock = currentBlock;
+    }
+
+    private getMaximumTokensLeftBeforeCap(): u256 {
+        // how many tokens are currently liquid vs. reserved
+        const reservedAmount: u256 = this.reservedLiquidity;
+        const totalLiquidity: u256 = this.liquidity;
+        const a: u256 = u256.fromU64(10_000);
+
+        // if totalLiquidity == 0, then nothing is available
+        if (totalLiquidity.isZero()) {
+            return u256.Zero;
+        }
+
+        // 1) percentReserved = (reservedAmount * 10000) / totalLiquidity
+        //    in base 10000
+        const reservedRatio: u256 = SafeMath.div(SafeMath.mul(reservedAmount, a), totalLiquidity);
+
+        // 2) leftoverRatio = maxReserves5BlockPercent - reservedRatio
+        //    Make sure it doesn’t go negative => clamp at zero
+        let leftoverRatio: u256 = SafeMath.sub(
+            u256.fromU64(this.maxReserves5BlockPercent),
+            reservedRatio,
+        );
+
+        if (leftoverRatio.toI64() < 0) {
+            leftoverRatio = u256.Zero;
+        }
+
+        // 3) leftoverTokens = (leftoverRatio * totalLiquidity) / 10000
+        //    this is how many tokens can still be reserved
+        //    before we exceed the 5-block cap
+        return SafeMath.div(SafeMath.mul(totalLiquidity, leftoverRatio), a);
     }
 
     private tokensToSatoshis(tokenAmount: u256, scaledPrice: u256): u256 {

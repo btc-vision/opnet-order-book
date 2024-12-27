@@ -123,6 +123,7 @@ export class NativeSwap extends OP_NET {
         const receiver: string = calldata.readStringWithLength();
         const antiBotEnabledFor: u16 = calldata.readU16();
         const antiBotMaximumTokensPerReservation: u256 = calldata.readU256();
+        const maxReservesIn5BlocksPercent: u16 = calldata.readU16();
 
         if (Blockchain.validateBitcoinAddress(receiver) == false) {
             throw new Revert('Invalid receiver address');
@@ -150,6 +151,7 @@ export class NativeSwap extends OP_NET {
             receiver,
             antiBotEnabledFor,
             antiBotMaximumTokensPerReservation,
+            maxReservesIn5BlocksPercent,
         );
 
         const writer = new BytesWriter(1);
@@ -306,9 +308,11 @@ export class NativeSwap extends OP_NET {
 
         const queue = this.getLiquidityQueue(token, this.addressToPointer(token));
 
-        const result = new BytesWriter(64);
+        const result = new BytesWriter(128);
         result.writeU256(queue.liquidity);
         result.writeU256(queue.reservedLiquidity);
+        result.writeU256(queue.virtualBTCReserve);
+        result.writeU256(queue.virtualTokenReserve);
         return result;
     }
 
