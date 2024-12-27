@@ -15,10 +15,30 @@ as AssemblyScript and WebAssembly.
 For **detailed documentation** on how the Native Swap works such as mechanics, math, and security please
 see [NativeSwap.md](docs/NativeSwap.md).
 
+## Overview
+
+- **Native BTC Support**: Includes specialized logic to handle the irreversibility of transactions.
+- **Cross-Chain Efficiency**: Utilizes an internal AMM approach combined with reservation models to prevent partial
+  failures that can't be reverted on the blockchain side.
+- **Scalable Architecture**: Designed to handle high throughput while maintaining consistent, block-based price updates.
+
 ## Prerequisites
 
 - [Node.js](https://nodejs.org/en/download/prebuilt-installer) >= 21.0
 - [npm](https://www.npmjs.com/) >= 10.0
+
+## Basic Setup
+
+1. **Install Dependencies**:
+   ```bash
+   npm install
+   ```
+
+2. **Build the Project**:
+   ```bash
+   npm run build
+   ```
+   This compiles the AssemblyScript code into WebAssembly, along with any TypeScript modules used.
 
 ## License
 
