@@ -289,10 +289,6 @@ export class LiquidityQueue {
         return this.calculatedScaleFactor;
     }
 
-    //=====================================
-    // CREATE POOL
-
-    //=====================================
     public createPool(
         floorPrice: u256,
         providerId: u256,
@@ -340,9 +336,6 @@ export class LiquidityQueue {
         this._settings.save();
     }
 
-    //=====================================
-    // The "Price" = B / T (scaled)
-    //=====================================
     public quote(): u256 {
         this.updateVirtualPoolIfNeeded();
         const T: u256 = this.virtualTokenReserve;
@@ -350,26 +343,9 @@ export class LiquidityQueue {
             return u256.Zero;
         }
 
-        //
-        // ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        // We multiply BTC reserve by SCALE_FACTOR (10^(18 - 8) = 10^10)
-        // so we don’t get zero if B < T. This returns a "scaled" price:
-        //    price = (B * 10^(TOKEN_DECIMALS - BTC_DECIMALS)) / T
-        //
-        //const scaledB: u256 = SafeMath.mul(this.virtualBTCReserve, this.SCALE_FACTOR);
-        const price: u256 = SafeMath.div(T, this.virtualBTCReserve);
-        //Blockchain.log(`quote: B=${this.virtualBTCReserve} T=${T}, price=${price}`);
-
-        return price;
+        return SafeMath.div(T, this.virtualBTCReserve);
     }
 
-    //=====================================
-    // Example fix where we "unscale" the price
-    // to find how many satoshis an amount of tokens is worth.
-    // This is relevant if your business logic needs a raw
-    // satoshi count. If not, remove or adapt as you wish.
-
-    //=====================================
     public addLiquidity(
         providerId: u256,
         amountIn: u128,
@@ -509,9 +485,6 @@ export class LiquidityQueue {
         );
     }
 
-    // =====================================
-    // SWAP
-    // =====================================
     public swap(buyer: Address): void {
         this.updateVirtualPoolIfNeeded();
 
@@ -571,10 +544,6 @@ export class LiquidityQueue {
                 continue;
             }
 
-            // -----------------------------------------
-            // we must unscale the price
-            // tokensDesired = (satoshisSent * quoteAtReservation) / SCALE_FACTOR
-            // -----------------------------------------
             let tokensDesired = this.satoshisToTokens(satoshisSent, quoteAtReservation);
 
             // clamp by reserved
@@ -622,10 +591,6 @@ export class LiquidityQueue {
         this.updateTotalReserved(this.tokenId, totalTokensTransferred, false);
         this.updateTotalReserve(this.tokenId, totalTokensTransferred, false);
 
-        //Blockchain.log(
-        //    `totalTokensTransferred: ${totalTokensTransferred}, totalSatoshisSpent: ${totalSatoshisSpent}`,
-        //);
-
         // update accumulators
         this.buyTokens(totalTokensTransferred, totalSatoshisSpent);
 
@@ -639,9 +604,6 @@ export class LiquidityQueue {
         Blockchain.emit(ev);
     }
 
-    // =====================================
-    // RESERVE LIQUIDITY
-    // =====================================
     public reserveLiquidity(buyer: Address, maximumAmountIn: u256, minimumAmountOut: u256): u256 {
         this.updateVirtualPoolIfNeeded();
 
