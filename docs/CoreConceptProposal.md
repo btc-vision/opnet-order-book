@@ -110,6 +110,14 @@ Whenever a liquidity provider (LP) adds BTC, it is actually used to "buy" tokens
 flip side, when an LP wants to remove BTC, it happens gradually as other users swap into the liquidity pool. The
 contract tracks how much BTC each LP is owed over time (a "virtual BTC" balance).
 
+### Liquidity Provider vs tokens providers (want to sell tokens for BTC)
+
+A liquidity provider is someone who wish to add liquidity to an LP pool. They provide both tokens and BTC.
+
+A token provider is someone who wish to sell tokens for BTC. They provide tokens only, they get pushed into a queue
+waiting for a buyer to consume their tokens. They are not liquidity providers. Their tokens are not added to the pool
+until a buyer start to consume their tokens.
+
 ### Adding Liquidity
 
 1. **User sends X tokens and X BTC**
