@@ -56,10 +56,7 @@ export class LiquidityQueue {
     public static MINIMUM_LIQUIDITY_IN_SAT_VALUE_ADD_LIQUIDITY: u256 = u256.fromU32(10_000);
     public static PERCENT_TOKENS_FOR_PRIORITY_QUEUE: u128 = u128.fromU32(30);
     public static PERCENT_TOKENS_FOR_PRIORITY_FACTOR: u128 = u128.fromU32(1000);
-
-    // -----------------------------------------
-    //private static readonly BTC_DECIMALS: u32 = 8;
-    private static readonly TOKEN_DECIMALS: u32 = 20;
+    public static TIMEOUT_AFTER_EXPIRATION: u8 = 5; // 5 blocks timeout
 
     public readonly tokenId: u256;
 
@@ -94,7 +91,6 @@ export class LiquidityQueue {
     // Sells (tokens in, BTC out)
     private readonly _deltaBTCSell: StoredU256;
     private readonly _deltaTokensSell: StoredU256;
-    private calculatedScaleFactor: u256 = u256.Zero;
 
     constructor(
         public readonly token: Address,
@@ -284,19 +280,6 @@ export class LiquidityQueue {
         this._settings.set(3, value);
     }
 
-    // This ensures we don't lose precision if B < T.
-    public get SCALE_FACTOR(): u256 {
-        if (this.calculatedScaleFactor.isZero()) {
-            //const diff =  - LiquidityQueue.BTC_DECIMALS;
-            this.calculatedScaleFactor = SafeMath.pow(
-                u256.fromU32(10),
-                u256.fromU32(LiquidityQueue.TOKEN_DECIMALS),
-            );
-        }
-
-        return this.calculatedScaleFactor;
-    }
-
     public createPool(
         floorPrice: u256,
         providerId: u256,
@@ -317,7 +300,7 @@ export class LiquidityQueue {
         this.maxReserves5BlockPercent = <u64>maxReservesIn5BlocksPercent;
 
         // add initial liquidity
-        this.addLiquidity(providerId, initialLiquidity, receiver, false, true);
+        this.listLiquidity(providerId, initialLiquidity, receiver, false, true);
 
         // if dev wants anti-bot
         if (antiBotEnabledFor) {
@@ -358,7 +341,28 @@ export class LiquidityQueue {
         return SafeMath.div(T, this.virtualBTCReserve);
     }
 
-    public addLiquidity(
+    // TODO: Add liquidity to reserve pool
+    // We should allow people to add liquidity to one side of the pool in exchange for a OP_20 common to all other pools.
+    // We update both side of the virtual reserves and the total reserves.
+    // We also update the accumulators.
+    // The contract is responsible of a token itself can emit. This token is used to give back liquidity to the user when he want to remove his liquidity.
+    public fundReserve(amount: u256): void {
+        TransferHelper.safeTransferFrom(
+            this.token,
+            Blockchain.tx.sender,
+            Blockchain.contractAddress,
+            amount,
+        );
+
+        this.updateTotalReserve(this.tokenId, amount, true);
+        this.deltaTokensAdd = SafeMath.add(this.deltaTokensAdd, amount);
+
+        this.updateVirtualPoolIfNeeded();
+
+        // Blockchain.emit(new ReserveFundedEvent(amount));
+    }
+
+    public listLiquidity(
         providerId: u256,
         amountIn: u128,
         receiver: string,
@@ -484,6 +488,46 @@ export class LiquidityQueue {
 
         const ev = new LiquidityAddedEvent(provider.liquidity, receiver);
         Blockchain.emit(ev);
+    }
+
+    public unlistLiquidity(providerId: u256): u128 {
+        // Validate provider
+        const provider = getProvider(providerId);
+        if (!provider.isActive()) {
+            throw new Revert("Provider is not active or doesn't exist.");
+        }
+
+        // Check if user has enough unreserved tokens
+        if (!provider.reserved.isZero()) {
+            throw new Revert('Someone have active reservations on your liquidity.');
+        }
+
+        const amount: u256 = provider.liquidity.toU256();
+        if (amount.isZero()) {
+            throw new Revert('Provider has no liquidity.');
+        }
+
+        // Update provider’s liquidity
+        provider.liquidity = u128.Zero;
+
+        if (provider.isPriority()) {
+            this._priorityQueue.delete(provider.indexedAt);
+        } else {
+            this._queue.delete(provider.indexedAt);
+        }
+
+        provider.reset();
+
+        // Transfer tokens back to the provider
+        TransferHelper.safeTransfer(this.token, Blockchain.tx.sender, amount);
+
+        // Decrease the total reserves
+        this.updateTotalReserve(this.tokenId, amount, false);
+
+        this.deltaTokensSell = SafeMath.add(this.deltaTokensSell, amount);
+        this.cleanUpQueues();
+
+        return amount.toU128();
     }
 
     public getCostPriorityFee(): u64 {
@@ -622,6 +666,11 @@ export class LiquidityQueue {
         const reservation = new Reservation(buyer, this.token);
         if (reservation.valid()) {
             throw new Revert('Reservation already active');
+        }
+
+        const userTimeoutUntilBlock: u64 = reservation.userTimeoutBlockExpiration;
+        if (Blockchain.block.numberU64 <= userTimeoutUntilBlock) {
+            throw new Revert('User is timed out');
         }
 
         // currentQuote is scaled by 10^(TOKEN_DECIMALS - BTC_DECIMALS)
@@ -803,13 +852,13 @@ export class LiquidityQueue {
         let B = this.virtualBTCReserve;
         let T = this.virtualTokenReserve;
 
-        // Step A: add tokens from deltaTokensAdd
+        // add tokens from deltaTokensAdd
         const dT_add = this.deltaTokensAdd;
         if (!dT_add.isZero()) {
             T = SafeMath.add(T, dT_add);
         }
 
-        // Step B: apply net "buys" => (B + incB)*(T - dT_buy) = B*T
+        // apply net "buys" => (B + incB)*(T - dT_buy) = B*T
         const dB_buy = this.deltaBTCBuy;
         const dT_buy = this.deltaTokensBuy;
 
@@ -830,8 +879,6 @@ export class LiquidityQueue {
             let incB = SafeMath.sub(Bprime, B);
 
             if (u256.gt(incB, dB_buy)) {
-                // MODIFIED CODE:
-                // If users didn't provide enough BTC, do a partial fill.
                 // We'll use all the BTC we actually have: dB_buy
                 // => B' = B + dB_buy
                 Bprime = SafeMath.add(B, dB_buy);
@@ -856,7 +903,7 @@ export class LiquidityQueue {
             T = Tprime;
         }
 
-        // Step C: apply net "sells" => (B - x)*(T + dT_sell)= B*T
+        // apply net "sells" => (B - x)*(T + dT_sell)= B*T
         const dT_sell = this.deltaTokensSell;
         if (!dT_sell.isZero()) {
             const T2 = SafeMath.add(T, dT_sell);
@@ -870,7 +917,7 @@ export class LiquidityQueue {
             T = u256.One;
         }
 
-        // store
+        // store new values
         this.virtualBTCReserve = B;
         this.virtualTokenReserve = T;
 
@@ -1054,6 +1101,9 @@ export class LiquidityQueue {
                 if (!reservation.isActive()) {
                     continue;
                 }
+
+                reservation.userTimeoutBlockExpiration =
+                    Blockchain.block.numberU64 + LiquidityQueue.TIMEOUT_AFTER_EXPIRATION;
 
                 const reservedIndexes = reservation.getReservedIndexes();
                 const reservedValues = reservation.getReservedValues();

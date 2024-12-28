@@ -54,6 +54,14 @@ export class Reservation {
         return block - LiquidityQueue.RESERVATION_EXPIRE_AFTER;
     }
 
+    public get userTimeoutBlockExpiration(): u64 {
+        return this.userReservation.getUserTimeoutBlockExpiration();
+    }
+
+    public set userTimeoutBlockExpiration(block: u64) {
+        this.userReservation.setUserTimeoutBlockExpiration(block);
+    }
+
     public static load(reservationId: u128): Reservation {
         return new Reservation(Address.dead(), Address.dead(), reservationId.toUint8Array(true));
     }
@@ -100,8 +108,7 @@ export class Reservation {
         this.reservedIndexes.reset();
         this.reservedValues.reset();
         this.reservedPriority.reset();
-
-        this.userReservation.setExpirationBlock(0);
+        this.userReservation.reset();
 
         this.save();
     }

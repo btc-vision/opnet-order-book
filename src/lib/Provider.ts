@@ -68,7 +68,6 @@ export class Provider {
 
     public reset(): void {
         this.userLiquidity.reset();
-        this.save();
     }
 
     public save(): void {

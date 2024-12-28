@@ -8,7 +8,6 @@ import {
     Revert,
     SafeMath,
     Selector,
-    TransferHelper,
 } from '@btc-vision/btc-runtime/runtime';
 import { OP_NET } from '@btc-vision/btc-runtime/runtime/contracts/OP_NET';
 import { u128, u256 } from '@btc-vision/as-bignum/assembly';
@@ -50,10 +49,10 @@ export class NativeSwap extends OP_NET {
                 return this.reserve(calldata);
             case encodeSelector('swap'):
                 return this.swap(calldata);
-            case encodeSelector('addLiquidity'):
-                return this.addLiquidity(calldata);
-            case encodeSelector('removeLiquidity'):
-                return this.removeLiquidity(calldata);
+            case encodeSelector('listLiquidity'):
+                return this.listLiquidity(calldata);
+            case encodeSelector('unlistLiquidity'):
+                return this.unlistLiquidity(calldata);
             case encodeSelector('createPool'): // aka enable trading
                 return this.createPool(calldata);
             case encodeSelector('setFees'):
@@ -162,7 +161,7 @@ export class NativeSwap extends OP_NET {
     //=================================================
     // ADD LIQUIDITY
     //=================================================
-    private addLiquidity(calldata: Calldata): BytesWriter {
+    private listLiquidity(calldata: Calldata): BytesWriter {
         const token: Address = calldata.readAddress();
         const receiver: string = calldata.readStringWithLength();
 
@@ -172,10 +171,10 @@ export class NativeSwap extends OP_NET {
 
         const amountIn: u128 = calldata.readU128();
         const priority: boolean = calldata.readBoolean();
-        return this._addLiquidity(token, receiver, amountIn, priority);
+        return this._listLiquidity(token, receiver, amountIn, priority);
     }
 
-    private _addLiquidity(
+    private _listLiquidity(
         token: Address,
         receiver: string,
         amountIn: u128,
@@ -192,7 +191,7 @@ export class NativeSwap extends OP_NET {
         const tokenId = this.addressToPointer(token);
 
         const queue = this.getLiquidityQueue(token, tokenId);
-        queue.addLiquidity(providerId, amountIn, receiver, priority);
+        queue.listLiquidity(providerId, amountIn, receiver, priority);
         queue.save();
 
         // Return success
@@ -245,29 +244,28 @@ export class NativeSwap extends OP_NET {
     }
 
     //=================================================
-    // REMOVE LIQUIDITY (Placeholder)
+    // REMOVE LIQUIDITY
     //=================================================
-    private removeLiquidity(calldata: Calldata): BytesWriter {
+    private unlistLiquidity(calldata: Calldata): BytesWriter {
         const token: Address = calldata.readAddress();
-        return this._removeLiquidity(token);
+        return this._unlistLiquidity(token);
     }
 
-    private _removeLiquidity(token: Address): BytesWriter {
+    private _unlistLiquidity(token: Address): BytesWriter {
         if (token.empty() || token.equals(Blockchain.DEAD_ADDRESS)) {
             throw new Revert('Invalid token address');
         }
 
-        // TODO: Implement logic to remove liquidity
-        const totalTokensReturned = u256.Zero;
+        const providerId = this.addressToPointerU256(Blockchain.tx.sender, token);
+        const tokenId = this.addressToPointer(token);
 
-        // Return tokens to the seller
-        if (u256.gt(totalTokensReturned, u256.Zero)) {
-            TransferHelper.safeTransfer(token, Blockchain.tx.sender, totalTokensReturned);
-        }
+        const queue = this.getLiquidityQueue(token, tokenId);
+        const totalTokensReturned = queue.unlistLiquidity(providerId);
+        queue.save();
 
         // Serialize the total tokens returned
         const result = new BytesWriter(32);
-        result.writeU128(totalTokensReturned.toU128());
+        result.writeU128(totalTokensReturned);
         return result;
     }
 

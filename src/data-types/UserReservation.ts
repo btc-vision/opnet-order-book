@@ -13,6 +13,7 @@ export class UserReservation {
 
     private expirationBlock: u64 = 0;
     private priorityIndex: u64 = 0;
+    private userTimeoutBlockExpiration: u64 = 0;
 
     // Flags to manage state
     private isLoaded: bool = false;
@@ -59,6 +60,31 @@ export class UserReservation {
     }
 
     /**
+     * @method getUserTimeoutBlockExpiration
+     * @description Retrieves the user timeout if any.
+     * @returns {u64} - The user timeout block expiration.
+     */
+    @inline
+    public getUserTimeoutBlockExpiration(): u64 {
+        this.ensureValues();
+        return this.userTimeoutBlockExpiration;
+    }
+
+    /**
+     * @method setUserTimeoutBlockExpiration
+     * @description Sets the user timeout block expiration.
+     * @param block - The user timeout block expiration to set.
+     */
+    @inline
+    public setUserTimeoutBlockExpiration(block: u64): void {
+        this.ensureValues();
+        if (this.userTimeoutBlockExpiration != block) {
+            this.userTimeoutBlockExpiration = block;
+            this.isChanged = true;
+        }
+    }
+
+    /**
      * @method save
      * @description Persists the cached values to storage if any have been modified.
      */
@@ -77,6 +103,7 @@ export class UserReservation {
     @inline
     public reset(): void {
         this.expirationBlock = 0;
+        this.priorityIndex = 0;
         this.isChanged = true;
     }
 
@@ -119,6 +146,9 @@ export class UserReservation {
             // Unpack priorityIndex (8 bytes, little endian)
             this.priorityIndex = reader.readU64();
 
+            // Unpack userTimeoutBlockExpiration (8 bytes, little endian)
+            this.userTimeoutBlockExpiration = reader.readU64();
+
             // Skip remaining bytes (if any)
             this.isLoaded = true;
         }
@@ -138,6 +168,9 @@ export class UserReservation {
 
         // Pack priorityIndex (8 bytes, little endian)
         writer.writeU64(this.priorityIndex);
+
+        // Pack userTimeoutBlockExpiration (8 bytes, little endian)
+        writer.writeU64(this.userTimeoutBlockExpiration);
 
         return u256.fromBytes(writer.getBuffer(), true);
     }
