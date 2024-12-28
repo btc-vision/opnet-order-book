@@ -60,6 +60,11 @@ down with sells?). If you do the OPPOSITE, #2 is still an issue.
     - The price move that results is localized to the liquidity of the *particular listing* rather than retroactively
       affecting all prior liquidity providers.
 
+5. **Priority Queue**
+    - A priority queue system is in-place for who ever want to be prioritized in the normal FFI queue. This allows
+      anyone who want to sell right now to do so. Note that this queue will not bypass the liquidity removal queue. It
+      will only be used to prioritize who gets to sell first.
+
 ---
 
 ## Key Design Implications
