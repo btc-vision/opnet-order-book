@@ -69,27 +69,44 @@ down with sells?). If you do the OPPOSITE, #2 is still an issue.
 
 ## Key Design Implications
 
-1. **Thickening Liquidity Without Crashing Price.**
+1. **Token creators**
+    - Token creators who wish to create a native bitcoin pool must instantiate their pool on the contract. Only owner
+      are allowed to do so because of the constraints that must be set during the creation process.
+    - When a user creates a one-sided pool, xy = k is respected but given BTC cannot be held by the contract, it is
+      simulated through a base price constant (p0) that creates the initial ratio of BTC to token
+
+    - **Purpose:** Initialize a brand-new liquidity pool with a *floor price* and some initial token liquidity.
+    - **floorPrice**: The initial price (p0) for the token. (1 sat = x token).
+    - **initialLiquidity**: Amount of tokens to seed the pool.
+    - **receiver**: The BTC address where the initial provider wants to receive BTC.
+    - **antiBotEnabledFor** & **antiBotMaximumTokensPerReservation**: Optional anti-bot configuration.
+    - **maxReservesIn5BlocksPercent**: Extra limit on how many tokens can be reserved in a rolling 5-block window (
+      protection from sudden spikes).
+    - Only the **token owner** can call `createPool()`.
+        - `floorPrice` and `initialLiquidity` **cannot be zero**.
+        - If `antiBotEnabledFor` is set, then `antiBotMaximumTokensPerReservation` **cannot be zero**.
+
+2. **Thickening Liquidity Without Crashing Price.**
     - In older approaches, adding a large amount of tokens (relative to the pool) could instantly crash the price.
     - With this design, a large "listing" can sit in the queue and does not affect the current price until it is
       *actually used* by swaps.
     - This means liquidity can scale more easily without wrecking the spot price for existing holders.
     - This prevents price manipulation and make the system more stable.
 
-2. **Idea of Liquidity Addition/Removal (not listings)**
+3. **Idea of Liquidity Addition/Removal (not listings)**
     - The idea of two-sided liquidity in a manner that auto-converts part of one side into the other (so you effectively
       deposit BTC + tokens, but behind the scenes, one side is swapped so that the system can hold a 50/50 "virtual"
       position).
     - Removing liquidity similarly is queued so that you gradually "withdraw" your share from ongoing swaps.
 
-3. **Price Stability on the Downside.**
+4. **Price Stability on the Downside.**
     - This FIFO, listing-based mechanism tends to be more stable on the downside because
       large sell pressure can only "materialize" if the newly added listing is consumed. Otherwise, it just sits in the
       queue.
     - If there are no buyers, the listing does not drag the price to zero because it is not included in the active
       reserve.
 
-4. **Different Behavior than a Standard AMM.**
+5. **Different Behavior than a Standard AMM.**
     - Traditional Uniswap v2 or other AMMs let anyone freely add or remove liquidity at the current ratio, which updates
       price continuously.
     - In this "native swap," price is more stepwise and depends heavily on which part of the liquidity queue is actually
@@ -98,13 +115,13 @@ down with sells?). If you do the OPPOSITE, #2 is still an issue.
       DEX route rather than going through the queue, especially if no one is actively consuming big lumps of cheap
       liquidity.
 
-5. **Potential for Reduced Impermanent Loss / Different Fee Dynamics.**
+6. **Potential for Reduced Impermanent Loss / Different Fee Dynamics.**
     - Because listings are only consumed when swaps come in, liquidity providers might experience different exposure
       than a classic constant-product pool.
     - The conversation suggests it might eliminate or reduce some forms of impermanent loss but introduces new
       complexities (e.g., once consumed, the liquidity is "locked" until fully used or you exit by queueing out).6
 
-6. **Reservation process**
+7. **Reservation process**
     - The reservation process is on-chain, inside the contract, when someone reserve tokens, they are not actually
       purchasing the tokens, they are just reserving them for 5 blocks. The reservation process give them a list of
       recipient to send Bitcoin to. The reservation process is used to prevent frontrunner and to allow the system to
@@ -124,7 +141,7 @@ down with sells?). If you do the OPPOSITE, #2 is still an issue.
     - Reservations prioritize people removing liquidity first, then, people in the priority queue, then, people in the
       FIFO queue and then, lastly, the initial "dev-liquidity".
 
-7. **Swap**
+8. **Swap**
     - The swap process fulfill reservations and swap Bitcoin for tokens. It checks that the user swapping have sent the
       right amount of Bitcoin to the right address provided during the reservation process. It allows for partial swap
       at the cost of a timeout if not at least 90% of the reserved tokens are swapped.

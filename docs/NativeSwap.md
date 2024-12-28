@@ -296,7 +296,6 @@ Below is how each main function works, from the user's perspective.
 **Purpose:** Initialize a brand-new liquidity pool with a *floor price* and some initial token liquidity.
 
 - **floorPrice**: The initial price (scaled in a specific way internally).
-- **providerId**: The unique identifier for the *initial provider*.
 - **initialLiquidity**: Amount of tokens to seed the pool.
 - **receiver**: The BTC address where the initial provider wants to receive BTC.
 - **antiBotEnabledFor** & **antiBotMaximumTokensPerReservation**: Optional anti-bot configuration.
