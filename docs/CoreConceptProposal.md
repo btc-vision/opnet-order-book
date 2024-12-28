@@ -19,25 +19,32 @@ Because contracts cannot hold real BTC, we need to find a way to let people prov
 
 3) There is no LP rewards for liquidity providers
 
+4) If you wish to swap tokens for Bitcoin, you have to "list" your tokens for sale. This is a virtual listing that sits
+   in the queue. It does not affect the current price until it is consumed by a BUY order (i.e., a swap). This is very
+   important to understand. We can not allow instantaneously swapping tokens for BTC because the contract can not hold
+   BTC. Instead, the BTC side is simulated.
+
 The current proposed construction solves #1 and #3. If you make ONLY virtual listings in the virtual reserve impact
 price, then #2 is solved BUT there is not really any sell pressure unless there's a big listing (i.e. how does price go
 down with sells?). If you do the OPPOSITE, #2 is still an issue.
 
 ## Core Concept
 
-1. **FIFO "Listings" (Liquidity Queues).**
-    - Instead of immediately adding new liquidity into the pool (as in Uniswap v2), liquidity is placed into a "listing
-      queue."
-    - This listing (liquidity) is only *activated* (i.e., enters the "virtual reserve") once it is consumed by
-      trades/swaps.
+1. **FIFO "Listings" (sell swap queue).**
+    - Instead of being able to instantly swap tokens for bitcoin instantly, you have to queue up your sell order.
+    - Creating a listing is NOT the same as adding liquidity. It is a "virtual" sell order that sits in the
+      queue. It does not affect the current price until it is consumed by a BUY order (i.e., a swap). This is very
+      important to understand.
+      We can not allow instantaneously swapping tokens for BTC because the contract can not hold BTC. Instead, the BTC
+      side is simulated.
     - Being first-in-first-out (FIFO), earlier listings in the queue get consumed (i.e., effectively become part of the
       active liquidity) before newer listings.
 
 2. **Price Only Changes When Liquidity Is Consumed.**
     - A large liquidity addition *does not* instantly crash the price the moment it is listed. It only affects price if
       and when users' swaps actually start to consume that liquidity.
-    - In other words, someone can put up a massive listing of tokens for sale (or liquidity), but price only moves once
-      trades "tap into" that listing.
+    - In other words, someone can put up a massive listing of tokens for sale, but price only moves once trades "tap
+      into" that listing.
 
 3. **Swaps & Block-Based Updates.**
     - The pool updates its price in discrete steps—often as "block-based" updates or triggered upon interactions.
