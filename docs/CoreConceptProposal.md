@@ -74,17 +74,19 @@ down with sells?). If you do the OPPOSITE, #2 is still an issue.
       are allowed to do so because of the constraints that must be set during the creation process.
     - When a user creates a one-sided pool, xy = k is respected but given BTC cannot be held by the contract, it is
       simulated through a base price constant (p0) that creates the initial ratio of BTC to token
+    - In this way, xy = k —> f(p0) * y = k, where f(p0) is the number of bitcoin to match y, the number of op20 tokens
+      on initial pool creation
 
-    - **Purpose:** Initialize a brand-new liquidity pool with a *floor price* and some initial token liquidity.
-    - **floorPrice**: The initial price (p0) for the token. (1 sat = x token).
-    - **initialLiquidity**: Amount of tokens to seed the pool.
-    - **receiver**: The BTC address where the initial provider wants to receive BTC.
-    - **antiBotEnabledFor** & **antiBotMaximumTokensPerReservation**: Optional anti-bot configuration.
-    - **maxReservesIn5BlocksPercent**: Extra limit on how many tokens can be reserved in a rolling 5-block window (
-      protection from sudden spikes).
-    - Only the **token owner** can call `createPool()`.
-        - `floorPrice` and `initialLiquidity` **cannot be zero**.
-        - If `antiBotEnabledFor` is set, then `antiBotMaximumTokensPerReservation` **cannot be zero**.
+        - **Purpose:** Initialize a brand-new liquidity pool with a *floor price* and some initial token liquidity.
+        - **floorPrice**: The initial price (p0) for the token. (1 sat = x token).
+        - **initialLiquidity**: Amount of tokens to seed the pool.
+        - **receiver**: The BTC address where the initial provider wants to receive BTC.
+        - **antiBotEnabledFor** & **antiBotMaximumTokensPerReservation**: Optional anti-bot configuration.
+        - **maxReservesIn5BlocksPercent**: Extra limit on how many tokens can be reserved in a rolling 5-block window (
+          protection from sudden spikes).
+        - Only the **token owner** can call `createPool()`.
+            - `floorPrice` and `initialLiquidity` **cannot be zero**.
+            - If `antiBotEnabledFor` is set, then `antiBotMaximumTokensPerReservation` **cannot be zero**.
 
 2. **Thickening Liquidity Without Crashing Price.**
     - In older approaches, adding a large amount of tokens (relative to the pool) could instantly crash the price.
