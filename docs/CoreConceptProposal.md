@@ -121,6 +121,13 @@ down with sells?). If you do the OPPOSITE, #2 is still an issue.
       other users from buying tokens.
     - More security measures are in place to prevent malicious actors from reserving all the liquidity and preventing
       other users from buying tokens.
+    - Reservations prioritize people removing liquidity first, then, people in the priority queue, then, people in the
+      FIFO queue and then, lastly, the initial "dev-liquidity".
+
+7. **Swap**
+    - The swap process fulfill reservations and swap Bitcoin for tokens. It checks that the user swapping have sent the
+      right amount of Bitcoin to the right address provided during the reservation process. It allows for partial swap
+      at the cost of a timeout if not at least 90% of the reserved tokens are swapped.
 
 ---
 
