@@ -228,10 +228,15 @@ trade could have a significant price impact if it were allowed to reserve a larg
 
 By applying no cap, multiple users swaps could lead to a significant price impact such as the following example:
 
-![No cap](https://github.com/btc-vision/opnet-order-book/blob/main/no_cap.png?raw=true)
+##### No cap looks like:
+
+<img src="https://github.com/btc-vision/opnet-order-book/blob/main/images/nocap.png?raw=true" width="800" alt="No cap"/>
 
 By applying a cap of 40% of the total liquidity in the pool, we can see a significant improvement on how the chart look:
-![Cap 40%](https://github.com/btc-vision/opnet-order-book/blob/main/cap.png?raw=true)
+
+##### 40% cap looks like:
+
+<img src="https://github.com/btc-vision/opnet-order-book/blob/main/images/cap.png?raw=true" width="800" alt="Cap"/>
 
 Wait, why is this so effective? Because the AMM only updates once per block, multiple users swaps could lead to a
 significant price impact. By applying a cap, we can prevent such behavior and ensure a more stable price for all users.
@@ -240,8 +245,9 @@ This also makes the chart look more like normal trading behavior.
 But yes, it does limit the amount of liquidity that can be reserved in a short time window. This is a trade-off between
 price stability and liquidity availability.
 
-Here is what a 70% cap looks like:
-![Cap 70%](https://github.com/btc-vision/opnet-order-book/blob/main/cap70.png?raw=true)
+##### 70% cap looks like:
+
+<img src="https://github.com/btc-vision/opnet-order-book/blob/main/images/cap70.png?raw=true" width="800" alt="70% cap"/>
 
 As you can see here, the price is more impacted by the trades, but it is still better than having no cap at all.
 
