@@ -102,7 +102,25 @@ down with sells?). If you do the OPPOSITE, #2 is still an issue.
     - Because listings are only consumed when swaps come in, liquidity providers might experience different exposure
       than a classic constant-product pool.
     - The conversation suggests it might eliminate or reduce some forms of impermanent loss but introduces new
-      complexities (e.g., once consumed, the liquidity is "locked" until fully used or you exit by queueing out).
+      complexities (e.g., once consumed, the liquidity is "locked" until fully used or you exit by queueing out).6
+
+6. **Reservation process**
+    - The reservation process is on-chain, inside the contract, when someone reserve tokens, they are not actually
+      purchasing the tokens, they are just reserving them for 5 blocks. The reservation process give them a list of
+      recipient to send Bitcoin to. The reservation process is used to prevent frontrunner and to allow the system to
+      know who is selling tokens for Bitcoin. It also prevent any risk of Bitcoin being sent to the wrong address or
+      lost.
+    - Reserving does not transfer any tokens, it only reserve them for 5 blocks. If the reservation is not fulfilled
+      within 5 blocks, it is cancelled and the tokens are released back to the seller total available tokens.
+    - If the reservation is not fulfilled, the buyer is timed out for a determined amount of block to prevent spamming
+      the reservation process and clogging the system.
+    - A maximum cap of a % of the liquidity under a 5 block period can be applied to reservations to prevent malicious
+      actors from reserving all the liquidity and preventing other users from buying tokens.
+    - An anti bot process is in place, (if enabled by the token creator), to prevent up to x amount to be reserved for x
+      amount of block after trading is enabled. This is to prevent bots from reserving all the liquidity and preventing
+      other users from buying tokens.
+    - More security measures are in place to prevent malicious actors from reserving all the liquidity and preventing
+      other users from buying tokens.
 
 ---
 
