@@ -443,7 +443,7 @@ export class NativeSwap extends OP_NET {
         }
 
         // Simulate ephemeral EWMA for S (sell volume).
-        //    We want to account for some logic that “sells” are 0 right now, do similarly:
+        //    We want to account for some logic that "sells" are 0 right now, do similarly:
         let simEWMA_S: u256 = queue.ewmaS;
         if (blocksElapsed_S > 0) {
             simEWMA_S = quoter.updateEWMA(
@@ -469,7 +469,7 @@ export class NativeSwap extends OP_NET {
             }
         }
 
-        // Now compute the ephemeral “currentPrice” with your advanced price formula:
+        // Now compute the ephemeral "currentPrice" with your advanced price formula:
         const currentPrice: u256 = quoter.calculatePrice(
             queue.p0, // baseline P0
             simEWMA_B,
@@ -506,7 +506,7 @@ export class NativeSwap extends OP_NET {
 
         // 10) Serialize the result
         const result = new BytesWriter(96);
-        result.writeU256(tokensOut); // how many tokens in “lowest units”
+        result.writeU256(tokensOut); // how many tokens in "lowest units"
         result.writeU256(requiredSatoshis); // how many sat needed
         result.writeU256(currentPrice); // ephemeral price
         return result;
