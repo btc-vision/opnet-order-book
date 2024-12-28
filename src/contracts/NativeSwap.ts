@@ -328,7 +328,7 @@ export class NativeSwap extends OP_NET {
     /**
      * @function _getQuote
      * Fetches the estimated number of tokens for a given BTC amount
-     * using the new “virtual AMM” approach:
+     * using the new "virtual AMM" approach:
      *
      *   1) price = queue.quote() = scaled price = (B * SHIFT) / T
      *   2) tokensOut = (satoshisIn * price) / SHIFT   // [SCALE FIX]

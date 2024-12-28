@@ -17,7 +17,7 @@ and providers against exploits and irrecoverable token loss.
         - [Anti-bot Measures](#anti-bot-measures)
         - [Partial Reverts Inside the Contract](#partial-reverts-inside-the-contract)
         - [Why block-based updates avoid reversion](#why-block-based-updates-avoid-reversion)
-    - [5. Why It Must Be Built This Way](#why-it-must-be-built-this-way)
+    - [5. Why It Must Be Built This Way](#5-why-it-must-be-built-this-way)
         - [Irreversibility of Bitcoin](#irreversibility-of-bitcoin)
         - [Guaranteed Consistency for Liquidity Providers](#guaranteed-consistency-for-liquidity-providers)
         - [Reservation Expiry & Cleanup](#reservation-expiry--cleanup)
@@ -40,10 +40,10 @@ and providers against exploits and irrecoverable token loss.
 ### **Reservation Model**
 
 **Problem**: When performing on chain or dual-layer swaps (in this case, with real on-chain BTC inputs), you
-cannot revert a Bitcoin transaction once it's been broadcast to miners. If the AMM tries to do a typical “single
-function call swap” and something fails, the BTC that was already sent can't be undone.
+cannot revert a Bitcoin transaction once it's been broadcast to miners. If the AMM tries to do a typical "single
+function call swap" and something fails, the BTC that was already sent can't be undone.
 
-**Solution**: The system uses a “reservation” approach. A user first “reserves” an amount of tokens at the current
+**Solution**: The system uses a "reservation" approach. A user first "reserves" an amount of tokens at the current
 *block-based* price. This means the protocol locks a certain number of tokens for that user, guaranteed for a
 specific number of blocks. During this time, the user can broadcast an actual BTC transaction to the AMM's
 contract. If the transaction arrives within the reservation window, the contract completes the swap. Otherwise,
@@ -82,29 +82,33 @@ Here, the protocol must protect itself and users from scenario such as:
 
 ### Constant Product Math
 
-The contract maintains *virtual reserves* $ B $ for BTC and $ T $ for tokens. Under a **constant product** model:
+The contract maintains *virtual reserves* $B$ for BTC and $T$ for tokens. Under a **constant product** model:
 
 $$ [
 B \times T = \text{constant}
 ] $$
 
-- **Buying** (BTC in, tokens out):  
-  $$ [
-  (B + \Delta B) \times (T - \Delta T_{\text{buy}}) \approx B \times T
-  ] $$
-  This ensures that as more BTC flows in, fewer tokens remain, pushing the *price* up.
+#### **Buying** (BTC in, tokens out):
 
-- **Selling** (tokens in, BTC out):  
-  $$ [
-  (B - \Delta B_{\text{sell}}) \times (T + \Delta T_{\text{sell}}) \approx B \times T
-  ] $$
-  More tokens in the pool means the price of tokens goes down relative to BTC.
+$$ [
+(B + \Delta B) \times (T - \Delta T_{\text{buy}}) \approx B \times T
+] $$
+
+This ensures that as more BTC flows in, fewer tokens remain, pushing the *price* up.
+
+#### **Selling** (tokens in, BTC out):
+
+$$ [
+(B - \Delta B_{\text{sell}}) \times (T + \Delta T_{\text{sell}}) \approx B \times T
+] $$
+
+More tokens in the pool means the price of tokens goes down relative to BTC.
 
 ### 1. Virtual Reserves
 
 #### `virtualBTCReserve` & `virtualTokenReserve`
 
-The contract tracks two virtual reserves, $ B $ and $ T $. These are not necessarily the actual on-chain balances in the
+The contract tracks two virtual reserves, $B$ and $T$. These are not necessarily the actual on-chain balances in the
 contract but are instead used to compute prices in an AMM-like formula. The purpose of using virtual amounts is so
 that the protocol can manipulate how the liquidity pool scales without letting short-term trades push the reserves to
 zero or cause extreme slippage.
@@ -118,7 +122,7 @@ You will see lines like:
   // T' = B*T / (B + dB_buy)
   ```
 
-to maintain the invariant $  B \times T = \text{constant} $ for typical constant-product style AMMs (modified for
+to maintain the invariant $B \times T = \text{constant}$ for typical constant-product style AMMs (modified for
 partial fills to align with the actual BTC that arrives). But because the contract has to handle bridging from real BTC,
 it accumulates changes in a "delta" until the next "updateVirtualPoolIfNeeded()" call (essentially once-per-block).
 
@@ -167,7 +171,7 @@ A typical swap from a user perspective is:
 
 3. **`swap(...)`**
     - The user calls `swap(...)` on the contract after sending BTC.
-    - The contract verifies how many satoshis actually arrived for that user's “reserved” indexes.
+    - The contract verifies how many satoshis actually arrived for that user's "reserved" indexes.
     - It calculates how many tokens from each liquidity provider that reservation can fill.
     - The swap is executed at the locked-in block-based quote that was captured in `_quoteHistory` for the reservation's
       creation block. This ensures no price shift can occur between reservation time and swap time.
@@ -210,7 +214,7 @@ price reference.
 
 As mentioned, the key driver is that any misstep after a BTC transaction is broadcast leaves the protocol holding the
 bag. In many typical blockchain AMMs (like on Ethereum), a revert just undoes the whole transaction, giving the user
-back their ETH and leaving the contract state unchanged. That’s impossible once BTC is transmitted to a non-custodial
+back their ETH and leaving the contract state unchanged. That’s impossible once BTC is transmitted to a noncustodial
 address. Hence, the design choice of *block-based reservations* is crucial.
 
 #### Guaranteed Consistency for Liquidity Providers
@@ -225,7 +229,7 @@ transactions.
 Because the reservation has a fixed lifespan (e.g., 5 blocks in the `RESERVATION_EXPIRE_AFTER` parameter), it
 prevents indefinite token lockdown. If the user does not finalize the swap or send the BTC in time, the system calls
 `purgeReservationsAndRestoreProviders()`, freeing up the tokens for other swaps. This is especially vital given that
-we cannot forcibly “undo” the user’s un-sent Bitcoin transaction after some waiting period.
+we cannot forcibly "undo" the user’s un-sent Bitcoin transaction after some waiting period.
 
 ___
 
@@ -274,7 +278,7 @@ Below is how each main function works, from the user's perspective.
 **Constraints**:
 
 - You **cannot** exceed the pool's maximum token or numeric limits (checked by SafeMath).
-- The pool enforces a minimum “liquidity in satoshis” to ensure that trivial amounts aren't added (see
+- The pool enforces a minimum "liquidity in satoshis" to ensure that trivial amounts aren't added (see
   `MINIMUM_LIQUIDITY_IN_SAT_VALUE_ADD_LIQUIDITY`).
 - If you're already in the *priority queue*, you must keep adding as priority (you can't switch back and forth for
   free).
@@ -282,7 +286,7 @@ Below is how each main function works, from the user's perspective.
 ### 3. reserveLiquidity()
 
 **Who uses it?** Traders who want to buy tokens.  
-**Purpose:** “Reserve” tokens before actually paying BTC.
+**Purpose:** "Reserve" tokens before actually paying BTC.
 
 **Parameters**:
 
@@ -293,7 +297,7 @@ Below is how each main function works, from the user's perspective.
 
 1. The contract calculates how many tokens your `maximumAmountIn` could buy at the current *virtual price*.
 2. It checks availability across the **priority** and **standard** queue providers.
-3. It marks those tokens “reserved” for you (they cannot be sold to anyone else).
+3. It marks those tokens "reserved" for you (they cannot be sold to anyone else).
 4. It emits an event indicating the reserved tokens and how many satoshis might be needed.
 
 **Constraints**:
@@ -321,7 +325,7 @@ Below is how each main function works, from the user's perspective.
 
 - You must call `swap()` **before** your reservation expires (`RESERVATION_EXPIRE_AFTER` blocks).
 - If you send **no** or **insufficient** BTC, your reserved tokens get restored back to the providers.
-- If the contract's “virtual price” was extremely high or low, partial fill might apply to avoid overshoot.
+- If the contract's "virtual price" was extremely high or low, partial fill might apply to avoid overshoot.
 
 ### 5. removeLiquidity()
 
@@ -354,7 +358,7 @@ Below is how each main function works, from the user's perspective.
     - If you don't call `swap()` by then, your reservation can be purged, and tokens are restored to the providers.
 
 5. **Virtual Updates**:
-    - After each block, the contract updates its “virtual” reserves (BTC & tokens) once. This ensures stable price
+    - After each block, the contract updates its "virtual" reserves (BTC & tokens) once. This ensures stable price
       calculations and partial fill logic.
 
 6. **Revert on Invalid Inputs**:
@@ -364,10 +368,10 @@ Below is how each main function works, from the user's perspective.
 
 ### Partial Fill Logic
 
-If a buyer does not send enough BTC to match their “desired” amount of tokens, the contract partially fills the trade:
+If a buyer does not send enough BTC to match their "desired" amount of tokens, the contract partially fills the trade:
 
 - **Excess tokens** remain in the liquidity pool, or get restored to the provider's available (non-reserved) balance.
-- **No infinite minting** scenario because the contract always ensures $ (B \times T) $ remains constant or adjusts it
+- **No infinite minting** scenario because the contract always ensures $(B \times T)$ remains constant or adjusts it
   proportionally.
 
 ### Bot Limitations
@@ -381,5 +385,5 @@ An **anti-bot** mechanism:
 
 Stale reservations are automatically purged after `RESERVATION_EXPIRE_AFTER` blocks:
 
-- Any tokens that were “reserved” return to the provider's available balance.
+- Any tokens that were "reserved" return to the provider's available balance.
 - Ensures no indefinite lock of liquidity.
