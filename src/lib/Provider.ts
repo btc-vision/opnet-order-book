@@ -53,6 +53,14 @@ export class Provider {
         return this._btcReceiver as AdvancedStoredString;
     }
 
+    public enableLiquidityProvision(): void {
+        this.userLiquidity.setCanProvideLiquidity(true);
+    }
+
+    public canProvideLiquidity(): boolean {
+        return this.userLiquidity.canProvideLiquidity();
+    }
+
     public isActive(): bool {
         return this.userLiquidity.getActiveFlag() === 1;
     }

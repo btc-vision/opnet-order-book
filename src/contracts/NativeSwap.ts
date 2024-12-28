@@ -57,6 +57,8 @@ export class NativeSwap extends OP_NET {
                 return this.createPool(calldata);
             case encodeSelector('setFees'):
                 return this.setFees(calldata);
+            case encodeSelector('addLiquidity'):
+                return this.addLiquidity(calldata);
 
             /** Readable methods */
             case encodeSelector('getReserve'):
@@ -108,6 +110,18 @@ export class NativeSwap extends OP_NET {
         const writer = new BytesWriter(32);
         writer.writeU64(cost);
         return writer;
+    }
+
+    private addLiquidity(calldata: Calldata): BytesWriter {
+        const token = calldata.readAddress();
+        const amount = calldata.readU256();
+        const providerId = this.addressToPointerU256(Blockchain.tx.sender, token);
+
+        const queue = this.getLiquidityQueue(token, this.addressToPointer(token));
+        queue.addLiquidity(providerId, amount);
+        queue.save();
+
+        return new BytesWriter(1);
     }
 
     private createPool(calldata: Calldata): BytesWriter {
@@ -216,14 +230,17 @@ export class NativeSwap extends OP_NET {
         if (token.empty() || token.equals(Blockchain.DEAD_ADDRESS)) {
             throw new Revert('ORDER_BOOK: Invalid token address');
         }
+        
         if (maximumAmountIn.isZero()) {
             throw new Revert('ORDER_BOOK: Maximum amount in cannot be zero');
         }
+
         if (u256.lt(maximumAmountIn, this.minimumTradeSize)) {
             throw new Revert(
                 `ORDER_BOOK: Requested amount is below minimum trade size ${maximumAmountIn} < ${this.minimumTradeSize}`,
             );
         }
+
         if (minimumAmountOut.isZero()) {
             throw new Revert('ORDER_BOOK: Minimum amount out cannot be zero');
         }

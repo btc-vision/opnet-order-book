@@ -21,6 +21,7 @@ export class UserLiquidity {
     // Internal fields representing the components of UserLiquidity
     private activeFlag: u8 = 0;
     private priorityFlag: u8 = 0;
+    private canProvide: u8 = 0;
     private pendingReservationsFlag: u8 = 0;
     private liquidityAmount: u128 = u128.Zero;
     private reservedAmount: u128 = u128.Zero;
@@ -82,6 +83,21 @@ export class UserLiquidity {
         this.ensureValues();
         if (this.priorityFlag != flag) {
             this.priorityFlag = flag;
+            this.isChanged = true;
+        }
+    }
+
+    @inline
+    public canProvideLiquidity(): boolean {
+        this.ensureValues();
+        return this.canProvide == 1;
+    }
+
+    @inline
+    public setCanProvideLiquidity(canProvide: boolean): void {
+        this.ensureValues();
+        if (this.canProvide != (canProvide ? 1 : 0)) {
+            this.canProvide = canProvide ? 1 : 0;
             this.isChanged = true;
         }
     }
@@ -183,6 +199,7 @@ export class UserLiquidity {
         this.activeFlag = 0;
         this.pendingReservationsFlag = 0;
         this.priorityFlag = 0;
+        this.canProvide = 0;
         this.liquidityAmount = u128.Zero;
         this.reservedAmount = u128.Zero;
         this.isChanged = true;
@@ -226,6 +243,7 @@ export class UserLiquidity {
             this.activeFlag = flag & 0b1;
             this.pendingReservationsFlag = (flag >> 1) & 0b1;
             this.priorityFlag = (flag >> 2) & 0b1;
+            this.canProvide = (flag >> 3) & 0b1;
 
             // Unpack liquidityAmount (16 bytes, little endian)
             this.liquidityAmount = reader.readU128();
@@ -251,7 +269,10 @@ export class UserLiquidity {
     private packValues(): u256 {
         const writer = new BytesWriter(32);
         const flag: u8 =
-            (this.pendingReservationsFlag << 1) | this.activeFlag | (this.priorityFlag << 2);
+            (this.pendingReservationsFlag << 1) |
+            this.activeFlag |
+            (this.priorityFlag << 2) |
+            (this.canProvide << 3);
 
         writer.writeU8(flag);
 
