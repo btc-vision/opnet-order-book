@@ -16,6 +16,7 @@ and providers against exploits and irrecoverable token loss.
     - [4. Preventing Exploits & Reverts](#4-preventing-exploits--reverts)
         - [Anti-bot Measures](#anti-bot-measures)
         - [Partial Reverts Inside the Contract](#partial-reverts-inside-the-contract)
+        - [Effect of capping reservations in a 5 block rolling window](#effect-of-capping-reservations-in-a-5-block-rolling-window)
         - [Why block-based updates avoid reversion](#why-block-based-updates-avoid-reversion)
     - [5. Why It Must Be Built This Way](#5-why-it-must-be-built-this-way)
         - [Irreversibility of Bitcoin](#irreversibility-of-bitcoin)
@@ -84,23 +85,23 @@ Here, the protocol must protect itself and users from scenario such as:
 
 The contract maintains *virtual reserves* $B$ for BTC and $T$ for tokens. Under a **constant product** model:
 
-$$ [
+$$
 B \times T = \text{constant}
-] $$
+$$
 
 #### **Buying** (BTC in, tokens out):
 
-$$ [
+$$
 (B + \Delta B) \times (T - \Delta T_{\text{buy}}) \approx B \times T
-] $$
+$$
 
 This ensures that as more BTC flows in, fewer tokens remain, pushing the *price* up.
 
 #### **Selling** (tokens in, BTC out):
 
-$$ [
+$$
 (B - \Delta B_{\text{sell}}) \times (T + \Delta T_{\text{sell}}) \approx B \times T
-] $$
+$$
 
 More tokens in the pool means the price of tokens goes down relative to BTC.
 
@@ -115,15 +116,18 @@ zero or cause extreme slippage.
 
 #### Scaling and Partial Fill
 
-You will see lines like:
+B' and T' are the new virtual reserves after a partial fill:
 
-  ```ts
-  // B' = B*T / (T - dT_buy)
-  // T' = B*T / (B + dB_buy)
-  ```
+$$
+B' = \frac{B \times T}{T - \Delta T_{\text{buy}}}
+$$
 
-to maintain the invariant $B \times T = \text{constant}$ for typical constant-product style AMMs (modified for
-partial fills to align with the actual BTC that arrives). But because the contract has to handle bridging from real BTC,
+$$
+T' = \frac{B \times T}{B + \Delta B_{\text{buy}}}
+$$
+
+To maintain the invariant $B \times T = \text{constant}$ for typical constant-product style AMMs (modified for
+partial fills to align with the actual BTC that arrives). But because the contract has to handle BTC,
 it accumulates changes in a "delta" until the next "updateVirtualPoolIfNeeded()" call (essentially once-per-block).
 
 ### 2. Delta Accumulators & Single Block Updates
@@ -175,7 +179,7 @@ A typical swap from a user perspective is:
     - It calculates how many tokens from each liquidity provider that reservation can fill.
     - The swap is executed at the locked-in block-based quote that was captured in `_quoteHistory` for the reservation's
       creation block. This ensures no price shift can occur between reservation time and swap time.
-    - The tokens are then transferred to the user.
+    - The OP_20 tokens are then transferred to the user.
     - The contract updates the global `deltaBTCBuy` / `deltaTokensBuy` or `deltaBTCSell` / `deltaTokensSell`, which will
       factor into the next block's updated AMM price.
 
@@ -191,6 +195,21 @@ cap (
 `maxReserves5BlockPercent`), etc. These constraints ensure that no single user can hog all the liquidity in a short
 time window and manipulate on chain settlement.
 
+To prevent reservation locking from being abused, the contract enforce a deadline for each reaservation. If the user
+does not finalize the swap or send the BTC in time, the system calls `purgeReservationsAndRestoreProviders()`, freeing
+up the tokens for other swaps. This also apply a timeout for the user and prevent him from creating another reservation
+for a determined amount of time.
+
+To prevent a single user from hogging all the liquidity in the first blocks, the contract enforces a cap on how many
+tokens can be reserved per user for a certain number of blocks after the pool is created. This is the
+`antiBotEnabledFor`
+and `antiBotMaximumTokensPerReservation` parameters.
+
+To smooth out price impact from large trades, since the AMM only updates once per block, the contract also enforces a
+cap on how many tokens can be reserved in a rolling 5-block window. This is the `maxReservesIn5BlocksPercent` parameter.
+
+The contract also has a `minimumTradeSize` parameter to prevent trivially small trades that could clog the system.
+
 #### Partial Reverts Inside the Contract
 
 Notice that the contract has multiple checks (`if (providerId.isZero()) { throw ... }`, etc.) that revert if something
@@ -201,6 +220,31 @@ However, if the user's Bitcoin has already arrived, it means we are in the final
 must handle partial fills or just finalize. Because we do block-based quotes, we avoid having a half-filled state that
 leads to indefinite leftover BTC.
 
+#### Effect of capping reservations in a 5 block rolling window
+
+Capping the number of tokens that can be reserved in a 5-block window helps to prevent a single user from hogging all
+the liquidity in the first blocks. This is especially important because the AMM only updates once per block, so a large
+trade could have a significant price impact if it were allowed to reserve a large portion of the pool.
+
+By applying no cap, multiple users swaps could lead to a significant price impact such as the following example:
+
+![No cap](https://github.com/btc-vision/opnet-order-book/blob/main/no_cap.png?raw=true)
+
+By applying a cap of 40% of the total liquidity in the pool, we can see a significant improvement on how the chart look:
+![Cap 40%](https://github.com/btc-vision/opnet-order-book/blob/main/cap.png?raw=true)
+
+Wait, why is this so effective? Because the AMM only updates once per block, multiple users swaps could lead to a
+significant price impact. By applying a cap, we can prevent such behavior and ensure a more stable price for all users.
+This also makes the chart look more like normal trading behavior.
+
+But yes, it does limit the amount of liquidity that can be reserved in a short time window. This is a trade-off between
+price stability and liquidity availability.
+
+Here is what a 70% cap looks like:
+![Cap 70%](https://github.com/btc-vision/opnet-order-book/blob/main/cap70.png?raw=true)
+
+As you can see here, the price is more impacted by the trades, but it is still better than having no cap at all.
+
 #### Why block-based updates avoid reversion
 
 If the AMM updated the price *mid-transaction* or on the same block for multiple reservations, an attacker might craft
@@ -209,6 +253,9 @@ By only finalizing changes once per block, the protocol ensures that everyone in
 price reference.
 
 ### 5. Why It Must Be Built This Way
+
+As you might know, we must adapt the AMM to handle the unique properties of Bitcoin and other UTXO-based chains. Here's
+why:
 
 #### Irreversibility of Bitcoin
 
@@ -264,7 +311,7 @@ Below is how each main function works, from the user's perspective.
 **Parameters**:
 
 - **token**: The token address for which you're providing liquidity.
-- **receiver**: Your BTC address to receive satoshis when your tokens are sold.
+- **receiver**: Your BTC address to receive satoshis when your tokens are sold. This can be any valid address.
 - **amountIn**: Number of tokens you are depositing.
 - **priority**: Boolean. If `true`, you pay a tax to enter the *priority queue*.
 
