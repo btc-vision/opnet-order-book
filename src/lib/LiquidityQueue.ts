@@ -357,6 +357,10 @@ export class LiquidityQueue {
             return u256.Zero;
         }
 
+        if (this.virtualBTCReserve.isZero()) {
+            throw new Revert(`NOT_ENOUGH_LIQUIDITY`);
+        }
+
         return SafeMath.div(T, this.virtualBTCReserve);
     }
 
@@ -400,6 +404,7 @@ export class LiquidityQueue {
         if (u256.lt(this.liquidity, this.reservedLiquidity)) {
             throw new Revert('Impossible: liquidity < reservedLiquidity');
         }
+
         const totalAvailableLiquidity = SafeMath.sub(this.liquidity, this.reservedLiquidity);
         if (u256.lt(totalAvailableLiquidity, tokensRemaining)) {
             tokensRemaining = totalAvailableLiquidity;
@@ -751,7 +756,6 @@ export class LiquidityQueue {
 
         const provider: Provider = getProvider(providerId);
         const oldLiquidity: u128 = provider.liquidity;
-
         if (!u128.lt(oldLiquidity, SafeMath.sub128(u128.Max, amountIn))) {
             throw new Revert('Liquidity overflow. Please add a smaller amount.');
         }
@@ -991,6 +995,11 @@ export class LiquidityQueue {
 
             if (u256.gt(incB, dB_buy)) {
                 Bprime = SafeMath.add(B, dB_buy);
+
+                if (Bprime.isZero()) {
+                    throw new Revert('Bprime is zero');
+                }
+
                 let newTprime = SafeMath.div(numerator, Bprime);
                 if (u256.lt(newTprime, u256.One)) {
                     newTprime = u256.One;
@@ -1006,6 +1015,10 @@ export class LiquidityQueue {
         if (!dT_sell.isZero()) {
             const T2 = SafeMath.add(T, dT_sell);
             const numerator = SafeMath.mul(B, T);
+            if (T2.isZero()) {
+                throw new Revert('T2 is zero');
+            }
+
             B = SafeMath.div(numerator, T2);
             T = T2;
         }
