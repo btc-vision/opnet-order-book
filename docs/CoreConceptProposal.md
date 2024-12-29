@@ -1,80 +1,124 @@
-# High Level Concept Native Swap
+# Part 1: First-Order Architecture & Design
 
-## The Core Problem: No Bitcoin Custody
+## 1. The Core Problem: Noncustodial AMM using native bitcoin
 
-Because contracts cannot hold real BTC, we need to find a way to let people provide liquidity in a
-*pair* (Tokens + BTC) without actually storing BTC. Instead, the BTC side is simulated.
+**Goal:** We want a noncustodial Automated Market Maker (AMM) that uses *native* Bitcoin—no centralized custody, no
+synthetic token stand-ins.
 
----
+**Challenge:** Bitcoin's script capabilities are limited. On Ethereum, smart contracts can hold both sides of a
+liquidity pool (e.g., ETH + Token) in a Uniswap V2 contract. But Bitcoin does not offer that same level of
+programmability; you can't just lock bitcoins in a contract that automatically rebalances.
 
-## Outlined problematic with normal AMM using Native Bitcoin.
+Hence, the question: **How can we build a programmatic, trustless AMM that interacts with *real* BTC without relying on
+custodians?**
 
-1) you can't add liquidity beyond the initial ratio (without reducing the price via adding a listing post pool
-   creation), because BTC p0 is fixed. So in a situation where the # of tokens in the initial pool is low, it will
-   remain low and volatility will be high. You can't thicken liquidity
+### 2. Why Classical Uniswap Fails on Native Bitcoin
 
-2) Normal Uniswap V2 concept (with a reservation system and block based price updates) leads to a vulnerability where a
-   user can create a massive listing (ie adding virtual liquidity), causing price to crash. Because the system is FIFO,
-   it will penalize the first listers/LPers
+Traditional Uniswap relies on:
 
-3) There is no LP rewards for liquidity providers
+1. A contract holding two assets simultaneously.
+2. The ability for anyone to deposit or withdraw those assets freely, updating the spot price as reserves change.
 
-4) If you wish to swap tokens for Bitcoin, you have to "list" your tokens for sale. This is a virtual listing that sits
-   in the queue. It does not affect the current price until it is consumed by a BUY order (i.e., a swap). This is very
-   important to understand. We can not allow instantaneously swapping tokens for BTC because the contract can not hold
-   BTC. Instead, the BTC side is simulated.
+With real Bitcoin, you can't programmatically hold BTC inside a contract that rebalances. So the typical "pool of BTC +
+Token" approach simply doesn't apply.
 
-The current proposed construction solves #1 and #3. If you make ONLY virtual listings in the virtual reserve impact
-price, then #2 is solved BUT there is not really any sell pressure unless there's a big listing (i.e. how does price go
-down with sells?). If you do the OPPOSITE, #2 is still an issue.
+### 3. Forced One-Sided Pools for BTC
 
-## Core Concept
+Because we can't store BTC in the contract, any on-chain pool can really only hold the *token* side. The "BTC side" is
+therefore **virtual**. This means:
 
-1. **FIFO "Listings" (sell swap queue).**
-    - Instead of being able to instantly swap tokens for bitcoin instantly, you have to queue up your sell order.
-    - Creating a listing is NOT the same as adding liquidity. It is a "virtual" sell order that sits in the
-      queue. It does not affect the current price until it is consumed by a BUY order (i.e., a swap). This is very
-      important to understand.
-      We can not allow instantaneously swapping tokens for BTC because the contract can not hold BTC. Instead, the BTC
-      side is simulated.
-    - Being first-in-first-out (FIFO), earlier listings in the queue get consumed (i.e., effectively become part of the
-      active liquidity) before newer listings.
+- The AMM sees a "virtual BTC reserve" for price calculations.
+- Whenever a user wants to *sell* tokens for BTC, they place a *listing* (not an instant swap), waiting for an incoming
+  buyer with actual BTC.
+- Whenever a user wants to *add liquidity* with BTC, it effectively *buys tokens* from sellers in the queue, while the
+  contract tracks that user's share of a "virtual BTC" balance.
 
-2. **Price Only Changes When Liquidity Is Consumed.**
-    - A large liquidity addition *does not* instantly crash the price the moment it is listed. It only affects price if
-      and when users' swaps actually start to consume that liquidity.
-    - In other words, someone can put up a massive listing of tokens for sale, but price only moves once trades "tap
-      into" that listing.
+### 4. On-Chain Order Books: High Fees, Limited Scalability
 
-3. **Swaps & Block-Based Updates.**
-    - The pool updates its price in discrete steps—often as "block-based" updates or triggered upon interactions.
-    - A single user action (swap, add liquidity, etc.) can cause the system to "sync" the price.
-    - If there is no activity in a block, no new price update occurs.
+One might wonder: "Why not just build a standard on-chain order book for Bitcoin?" The answer: Bitcoin fees. Each limit
+order or pointer transaction would require an on-chain update on the Bitcoin blockchain. The overhead quickly becomes
+prohibitive. By contrast, this system tries to minimize raw Bitcoin transactions, only requiring them when actual BTC
+moves from buyer to seller.
 
-4. **Preventing Price Manipulation / Vulnerabilities.**
-    - One major goal is to eliminate the vulnerability where a single large addition of tokens in a typical AMM pool can
-      abruptly crash or spike the price. Since this is a block based system and use a reservation process, we have
-      to make the price impact only impact when liquidity is active.
-    - In the FIFO model, the user who provides an outsize listing takes on the slippage risk themselves once their
-      liquidity eventually gets consumed.
-    - The price move that results is localized to the liquidity of the *particular listing* rather than retroactively
-      affecting all prior liquidity providers.
+### 5. The Core Question
 
-5. **Priority Queue**
-    - A priority queue system is in-place for who ever want to be prioritized in the normal FFI queue. This allows
-      anyone who want to sell right now to do so. Note that this queue will not bypass the liquidity removal queue. It
-      will only be used to prioritize who gets to sell first.
+Putting it all together, we arrive at the core question for this entire system:
+
+> **How can we build a programmatic, trustless (noncustodial) AMM using real BTC, despite Bitcoin's limitations?**
 
 ---
 
-## Key Design Implications
+## 6. Proposed Solution: Native Swap
+
+### 6.1. The Concept of \(p_0\) & One-Sided Pool
+
+1. **Baseline Price $p_0$**
+    - When a token creator initializes the pool, they specify an initial token-to-BTC ratio ($p_0$), effectively
+      defining how many BTC would be paired against the tokens *if* the contract could hold BTC.
+    - The contract holds *only tokens* on-chain. It treats BTC as a "virtual reserve" in its accounting, using $p_0$
+      as a starting point.
+
+2. **One-Sided Pool**
+    - This pool is "one-sided" because it physically contains tokens only.
+    - The BTC side exists in the contract's ledger, adjusting over time as trades come in.
+
+### 6.2. FIFO "Listings" (Sell Swap Queue)
+
+- Since the contract does not hold BTC, a user wanting to sell tokens for BTC **cannot** swap instantly against a real
+  BTC balance.
+- Instead, they **create a listing** (like placing an order in a queue).
+- The listing remains inactive until another user brings in real BTC, at which point that portion of the queue is
+  "consumed", and the seller's tokens are sold.
+- Creating a listing is NOT the same as adding liquidity. It is a "virtual" sell order that sits in the
+  queue. It does not affect the current price until it is consumed by a BUY order (i.e., a swap). This is very
+  important to understand.
+
+Being **FIFO** means the earliest listing is used first. Large additions of tokens do *not* crash the price immediately;
+they merely sit in line until a real buyer arrives.
+
+### 6.3. Price Moves Only When Liquidity Is Consumed
+
+In a standard AMM, depositing or withdrawing liquidity instantly changes the ratio and thus the price. Here, that change
+is deferred.
+
+- A giant token listing does *not* move the price the moment it's added.
+- Price changes occur *when trades actually happen* (i.e., when someone brings BTC and "consumes" that listing).
+
+### 6.4. Swaps & Block-Based Updates
+
+- The contract updates price at discrete intervals—often once per swap or per block.
+- If a block passes with no actions, no new price is calculated.
+- This approach helps prevent chaotic price movements from front-running or partial transaction ordering.
+
+### 6.5. Preventing Price Manipulation / Vulnerabilities
+
+By deferring price updates until consumed, you avoid the classic scenario where a user instantly crashes the price by
+adding a disproportionate amount of tokens to a liquidity pool.
+
+- The user who contributes a giant listing will only affect price as that listing is eaten away by incoming BTC.
+- Past liquidity providers remain unaffected until the new listing actively becomes part of the *consumed* reserves.
+
+### 6.6. Priority Queue
+
+On top of the FIFO queue, there is an optional *priority queue* for those who want to *expedite* their selling. This
+feature simply ensures they get matched before the normal FIFO line. However, it doesn't override more critical
+operations (like liquidity removal).
+
+### 6.7. Everything On-Chain
+
+No off-chain or second-layer solution is needed. All rules about who owes whom BTC can be encoded in the contract. The
+contract can verify real Bitcoin transactions by checking UTXOs and ensuring the correct address and amount were paid.
+
+---
+
+### Part 2: Second-Order Implications & Considerations
 
 1. **Token creators**
     - Token creators who wish to create a native bitcoin pool must instantiate their pool on the contract. Only owner
       are allowed to do so because of the constraints that must be set during the creation process.
     - When a user creates a one-sided pool, xy = k is respected but given BTC cannot be held by the contract, it is
       simulated through a base price constant (p0) that creates the initial ratio of BTC to token
-    - In this way, xy = k —> f(p0) * y = k, where f(p0) is the number of bitcoin to match y, the number of op20 tokens
+    - In this way, xy = k —> f(p0) * y = k, where f(p0) is the number of bitcoin to match y, the number of OP_20 tokens
       on initial pool creation
 
         - **Purpose:** Initialize a brand-new liquidity pool with a *floor price* and some initial token liquidity.
@@ -150,7 +194,7 @@ down with sells?). If you do the OPPOSITE, #2 is still an issue.
 
 ---
 
-## Adding & Removing Liquidity (the "Two-Sided" Concept)
+### Part 3: Adding & Removing Liquidity (the "Two-Sided" Concept)
 
 The proposed idea to handle BTC liquidity is to have a "two-sided" liquidity system that is not directly tied to the
 underlying asset. Instead, it is a virtual representation of the user's position.
@@ -159,7 +203,7 @@ Whenever a liquidity provider (LP) adds BTC, it is actually used to "buy" tokens
 flip side, when an LP wants to remove BTC, it happens gradually as other users swap into the liquidity pool. The
 contract tracks how much BTC each LP is owed over time (a "virtual BTC" balance).
 
-### Liquidity Provider vs tokens providers (want to sell tokens for BTC)
+#### Liquidity Provider vs tokens providers (want to sell tokens for BTC)
 
 A liquidity provider is someone who wish to add liquidity to an LP pool. They provide both tokens and BTC.
 
@@ -167,7 +211,7 @@ A token provider is someone who wish to sell tokens for BTC. They provide tokens
 waiting for a buyer to consume their tokens. They are not liquidity providers. Their tokens are not added to the pool
 until a buyer start to consume their tokens.
 
-### Adding Liquidity
+#### Adding Liquidity
 
 1. **User sends X tokens and X BTC**
     - Suppose an LP wants to provide liquidity in a 50/50 ratio of token and BTC. They have some BTC, and they have
@@ -196,7 +240,7 @@ until a buyer start to consume their tokens.
     - This is conceptually similar to a typical "LP share" that AMMs (like Uniswap) create, except here one side is
       virtual.
 
-### Removing Liquidity
+#### Removing Liquidity
 
 When the liquidity provider wants to exit and redeem their share of the pool:
 
@@ -225,7 +269,7 @@ When the liquidity provider wants to exit and redeem their share of the pool:
     - Providers might avoid some typical impermanent loss by tracking the token vs. "virtual BTC" valuations. There is,
       of course, still the risk that if no one swaps in with BTC, you might wait a long time to get your BTC out.
 
-### How "Virtual BTC" Works Behind the Scenes for LP providers
+#### How "Virtual BTC" Works Behind the Scenes for LP providers
 
 - **Ledger Tracking**: The contract basically keeps a record:
     - "Liquidity Provider A contributed X BTC worth of liquidity."
@@ -235,7 +279,7 @@ When the liquidity provider wants to exit and redeem their share of the pool:
 - **Swaps Refill the BTC**: When future trades bring real BTC into the ecosystem (people buying tokens with BTC), the
   contract routes that BTC toward fulfilling outstanding BTC obligations for liquidity removers.
 
-### User Flow Example (Adding & Removing Liquidity)
+#### User Flow Example (Adding & Removing Liquidity)
 
 1. **Add Liquidity**
     - *Scenario*: You have 500 BANANA tokens and want to provide 500 BANANA + 500 BTC worth of liquidity.
