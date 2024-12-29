@@ -11,6 +11,7 @@ import {
 export class Provider {
     public providerId: u256;
     public indexedAt: u64 = 0;
+    public fromRemovalQueue: bool = false;
 
     private userLiquidity: UserLiquidity;
 
