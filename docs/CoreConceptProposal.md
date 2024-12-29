@@ -50,7 +50,7 @@ Putting it all together, we arrive at the core question for this entire system:
 
 ## 6. Proposed Solution: Native Swap
 
-### 6.1. The Concept of \(p_0\) & One-Sided Pool
+### 6.1. The Concept of $p_0$ & One-Sided Pool
 
 1. **Baseline Price $p_0$**
     - When a token creator initializes the pool, they specify an initial token-to-BTC ratio ($p_0$), effectively
