@@ -52,6 +52,8 @@ import { LiquidityAddedEvent } from '../events/LiquidityAddedEvent';
 import { CompletedTrade } from './CompletedTrade';
 import { LiquidityRemovedEvent } from '../events/LiquidityRemovedEvent';
 
+const ENABLE_TIMEOUT: bool = false;
+
 export class LiquidityQueue {
     // Reservation settings
     public static RESERVATION_EXPIRE_AFTER: u64 = 5;
@@ -378,7 +380,7 @@ export class LiquidityQueue {
         }
 
         const userTimeoutUntilBlock: u64 = reservation.userTimeoutBlockExpiration;
-        if (Blockchain.block.numberU64 <= userTimeoutUntilBlock) {
+        if (Blockchain.block.numberU64 <= userTimeoutUntilBlock && ENABLE_TIMEOUT) {
             throw new Revert('User is timed out');
         }
 
@@ -985,10 +987,13 @@ export class LiquidityQueue {
         const dT_buy = this.deltaTokensBuy;
 
         if (!dT_buy.isZero()) {
-            let Tprime = SafeMath.sub(T, dT_buy);
-            if (u256.lt(Tprime, u256.One)) {
+            let Tprime: u256;
+            if (u256.gt(dT_buy, T)) {
                 Tprime = u256.One;
+            } else {
+                Tprime = SafeMath.sub(T, dT_buy);
             }
+
             const numerator = SafeMath.mul(B, T);
             let Bprime = SafeMath.div(numerator, Tprime);
             const incB = SafeMath.sub(Bprime, B);
