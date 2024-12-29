@@ -17,20 +17,19 @@ import { u128, u256 } from '@btc-vision/as-bignum/assembly';
 import {
     ANTI_BOT_MAX_TOKENS_PER_RESERVATION,
     DELTA_BTC_BUY,
-    DELTA_BTC_SELL,
     DELTA_TOKENS_ADD,
     DELTA_TOKENS_BUY,
     DELTA_TOKENS_SELL,
     INITIAL_LIQUIDITY,
-    LIQUIDITY_EWMA_B_POINTER,
-    LIQUIDITY_EWMA_L_POINTER,
-    LIQUIDITY_EWMA_LAST_UPDATE_BLOCK_POINTER,
-    LIQUIDITY_EWMA_P0_POINTER,
-    LIQUIDITY_EWMA_S_POINTER,
+    LAST_VIRTUAL_BLOCK_UPDATE_POINTER,
+    LIQUIDITY_LAST_UPDATE_BLOCK_POINTER,
+    LIQUIDITY_P0_POINTER,
     LIQUIDITY_PRIORITY_QUEUE_POINTER,
     LIQUIDITY_QUEUE_POINTER,
     LIQUIDITY_QUOTE_HISTORY_POINTER,
     LIQUIDITY_RESERVED_POINTER,
+    LIQUIDITY_VIRTUAL_BTC_POINTER,
+    LIQUIDITY_VIRTUAL_T_POINTER,
     LP_BTC_OWED_POINTER,
     LP_BTC_OWED_RESERVED_POINTER,
     REMOVAL_QUEUE_POINTER,
@@ -43,7 +42,7 @@ import { StoredMapU256 } from '../stored/StoredMapU256';
 import { getProvider, Provider } from './Provider';
 import { LiquidityListedEvent } from '../events/LiquidityListedEvent';
 import { LiquidityReserved } from '../events/LiquidityReserved';
-import { Reservation, ReservationType } from './Reservation';
+import { LIQUIDITY_REMOVAL_TYPE, NORMAL_TYPE, PRIORITY_TYPE, Reservation } from './Reservation';
 import { MAX_RESERVATION_AMOUNT_PROVIDER } from '../data-types/UserLiquidity';
 import { ReservationCreatedEvent } from '../events/ReservationCreatedEvent';
 import { SwapExecutedEvent } from '../events/SwapExecutedEvent';
@@ -98,7 +97,6 @@ export class LiquidityQueue {
     private readonly _deltaTokensAdd: StoredU256;
     private readonly _deltaBTCBuy: StoredU256;
     private readonly _deltaTokensBuy: StoredU256;
-    private readonly _deltaBTCSell: StoredU256;
     private readonly _deltaTokensSell: StoredU256;
 
     // Map: providerId -> satoshis owed
@@ -132,19 +130,22 @@ export class LiquidityQueue {
         );
 
         // virtual reserves
-        this._virtualBTCReserve = new StoredU256(LIQUIDITY_EWMA_B_POINTER, tokenId, u256.Zero);
-        this._virtualTokenReserve = new StoredU256(LIQUIDITY_EWMA_S_POINTER, tokenId, u256.Zero);
-        this._p0 = new StoredU256(LIQUIDITY_EWMA_P0_POINTER, tokenId, u256.Zero);
+        this._virtualBTCReserve = new StoredU256(LIQUIDITY_VIRTUAL_BTC_POINTER, tokenId, u256.Zero);
+        this._virtualTokenReserve = new StoredU256(LIQUIDITY_VIRTUAL_T_POINTER, tokenId, u256.Zero);
+        this._p0 = new StoredU256(LIQUIDITY_P0_POINTER, tokenId, u256.Zero);
 
         // accumulators
         this._deltaTokensAdd = new StoredU256(DELTA_TOKENS_ADD, tokenId, u256.Zero);
         this._deltaBTCBuy = new StoredU256(DELTA_BTC_BUY, tokenId, u256.Zero);
         this._deltaTokensBuy = new StoredU256(DELTA_TOKENS_BUY, tokenId, u256.Zero);
-        this._deltaBTCSell = new StoredU256(DELTA_BTC_SELL, tokenId, u256.Zero);
         this._deltaTokensSell = new StoredU256(DELTA_TOKENS_SELL, tokenId, u256.Zero);
 
         // last block
-        this._lastVirtualUpdateBlock = new StoredU64(LIQUIDITY_EWMA_L_POINTER, tokenId, u256.Zero);
+        this._lastVirtualUpdateBlock = new StoredU64(
+            LAST_VIRTUAL_BLOCK_UPDATE_POINTER,
+            tokenId,
+            u256.Zero,
+        );
 
         this._maxTokenPerSwap = new StoredU256(
             ANTI_BOT_MAX_TOKENS_PER_RESERVATION,
@@ -157,11 +158,7 @@ export class LiquidityQueue {
 
         this._initialLiquidityProvider = new StoredU256(INITIAL_LIQUIDITY, tokenId, u256.Zero);
 
-        this._settingPurge = new StoredU64(
-            LIQUIDITY_EWMA_LAST_UPDATE_BLOCK_POINTER,
-            tokenId,
-            u256.Zero,
-        );
+        this._settingPurge = new StoredU64(LIQUIDITY_LAST_UPDATE_BLOCK_POINTER, tokenId, u256.Zero);
         this._settings = new StoredU64(RESERVATION_SETTINGS_POINTER, tokenId, u256.Zero);
 
         this._lpBTCowed = new StoredMapU256(LP_BTC_OWED_POINTER);
@@ -219,14 +216,6 @@ export class LiquidityQueue {
         this._deltaTokensBuy.value = val;
     }
 
-    public get deltaBTCSell(): u256 {
-        return this._deltaBTCSell.value;
-    }
-
-    public set deltaBTCSell(val: u256) {
-        this._deltaBTCSell.value = val;
-    }
-
     public get deltaTokensSell(): u256 {
         return this._deltaTokensSell.value;
     }
@@ -249,22 +238,6 @@ export class LiquidityQueue {
 
     public get liquidity(): u256 {
         return this._totalReserves.get(this.tokenId) || u256.Zero;
-    }
-
-    public get lastPurgedBlock(): u64 {
-        return this._settingPurge.get(2);
-    }
-
-    public set lastPurgedBlock(value: u64) {
-        this._settingPurge.set(2, value);
-    }
-
-    public get antiBotExpirationBlock(): u64 {
-        return this._settings.get(2);
-    }
-
-    public set antiBotExpirationBlock(value: u64) {
-        this._settings.set(2, value);
     }
 
     public get maxTokensPerReservation(): u256 {
@@ -305,6 +278,22 @@ export class LiquidityQueue {
 
     public set previousRemovalStartingIndex(value: u64) {
         this._settings.set(3, value);
+    }
+
+    public get lastPurgedBlock(): u64 {
+        return this._settingPurge.get(0);
+    }
+
+    public set lastPurgedBlock(value: u64) {
+        this._settingPurge.set(0, value);
+    }
+
+    public get antiBotExpirationBlock(): u64 {
+        return this._settingPurge.get(1);
+    }
+
+    public set antiBotExpirationBlock(value: u64) {
+        this._settingPurge.set(1, value);
     }
 
     public createPool(
@@ -426,11 +415,17 @@ export class LiquidityQueue {
         // We'll see how many satoshis that "tokensRemaining" would cost at the current quote.
         // This is to ensure we aren't in a weird mismatch state.
         const satCostTokenRemaining = this.tokensToSatoshis(tokensRemaining, currentQuote);
-        if (
-            u256.lt(satCostTokenRemaining, maximumAmountIn) ||
-            u256.lt(tokensRemaining, LiquidityQueue.MINIMUM_LIQUIDITY_IN_SAT_VALUE_ADD_LIQUIDITY)
-        ) {
+        if (u256.lt(satCostTokenRemaining, maximumAmountIn)) {
             throw new Revert(`Too little liquidity available ${satCostTokenRemaining}`);
+        }
+
+        if (
+            u256.lt(
+                satCostTokenRemaining,
+                LiquidityQueue.MINIMUM_LIQUIDITY_IN_SAT_VALUE_ADD_LIQUIDITY,
+            )
+        ) {
+            throw new Revert('Minimum liquidity not met');
         }
 
         let tokensReserved: u256 = u256.Zero;
@@ -475,7 +470,8 @@ export class LiquidityQueue {
                     continue;
                 }
 
-                // figure out how many sat we "would spend" to buy `tokensRemaining` at currentQuote
+                // We break if any provider in the removal queue has less than the minimum owed
+                // DUST. We don't want to reserve liquidity for them.
                 let satWouldSpend = this.tokensToSatoshis(tokensRemaining, currentQuote);
                 if (
                     u256.lt(
@@ -483,7 +479,6 @@ export class LiquidityQueue {
                         LiquidityQueue.STRICT_MINIMUM_PROVIDER_RESERVATION_AMOUNT,
                     )
                 ) {
-                    // If we're not spending at least the minimum => skip
                     break;
                 }
 
@@ -515,7 +510,7 @@ export class LiquidityQueue {
                 reservation.reserveAtIndex(
                     <u32>provider.indexedAt,
                     reserveAmount.toU128(),
-                    ReservationType.LIQUIDITY_REMOVAL,
+                    LIQUIDITY_REMOVAL_TYPE,
                 );
 
                 const ev = new LiquidityReserved(provider.btcReceiver, satWouldSpend.toU128());
@@ -578,7 +573,7 @@ export class LiquidityQueue {
                 reservation.reserveAtIndex(
                     <u32>provider.indexedAt,
                     reserveAmountU128,
-                    provider.isPriority() ? ReservationType.PRIORITY : ReservationType.NORMAL,
+                    provider.isPriority() ? PRIORITY_TYPE : NORMAL_TYPE,
                 );
 
                 const ev = new LiquidityReserved(provider.btcReceiver, costInSatoshis.toU128());
@@ -960,11 +955,11 @@ export class LiquidityQueue {
         this.deltaTokensBuy = SafeMath.add(this.deltaTokensBuy, tokensOut);
     }
 
-    public sellTokens(tokensIn: u256, satoshisOut: u256): void {
+    /*public sellTokens(tokensIn: u256, satoshisOut: u256): void {
         // accumulate
         this.deltaBTCSell = SafeMath.add(this.deltaBTCSell, satoshisOut);
         this.deltaTokensSell = SafeMath.add(this.deltaTokensSell, tokensIn);
-    }
+    }*/
 
     public updateVirtualPoolIfNeeded(): void {
         const currentBlock = Blockchain.block.numberU64;
@@ -984,16 +979,15 @@ export class LiquidityQueue {
         // apply net "buys"
         const dB_buy = this.deltaBTCBuy;
         const dT_buy = this.deltaTokensBuy;
-        let adjustedTokensBuy = dT_buy;
 
         if (!dT_buy.isZero()) {
-            let Tprime = SafeMath.sub(T, adjustedTokensBuy);
+            let Tprime = SafeMath.sub(T, dT_buy);
             if (u256.lt(Tprime, u256.One)) {
                 Tprime = u256.One;
             }
             const numerator = SafeMath.mul(B, T);
             let Bprime = SafeMath.div(numerator, Tprime);
-            let incB = SafeMath.sub(Bprime, B);
+            const incB = SafeMath.sub(Bprime, B);
 
             if (u256.gt(incB, dB_buy)) {
                 Bprime = SafeMath.add(B, dB_buy);
@@ -1001,9 +995,7 @@ export class LiquidityQueue {
                 if (u256.lt(newTprime, u256.One)) {
                     newTprime = u256.One;
                 }
-                adjustedTokensBuy = SafeMath.sub(T, newTprime);
                 Tprime = newTprime;
-                incB = dB_buy;
             }
             B = Bprime;
             T = Tprime;
@@ -1029,21 +1021,20 @@ export class LiquidityQueue {
         this.deltaTokensAdd = u256.Zero;
         this.deltaBTCBuy = u256.Zero;
         this.deltaTokensBuy = u256.Zero;
-        this.deltaBTCSell = u256.Zero;
         this.deltaTokensSell = u256.Zero;
 
         this.lastVirtualUpdateBlock = currentBlock;
     }
 
-    private getProviderIfFromQueue(providerIndex: u64, type: ReservationType): u256 {
+    private getProviderIfFromQueue(providerIndex: u64, type: u8): u256 {
         switch (type) {
-            case ReservationType.NORMAL: {
+            case NORMAL_TYPE: {
                 return this._queue.get(providerIndex);
             }
-            case ReservationType.PRIORITY: {
+            case PRIORITY_TYPE: {
                 return this._priorityQueue.get(providerIndex);
             }
-            case ReservationType.LIQUIDITY_REMOVAL: {
+            case LIQUIDITY_REMOVAL_TYPE: {
                 return this._removalQueue.get(providerIndex);
             }
             default: {
@@ -1052,7 +1043,7 @@ export class LiquidityQueue {
         }
     }
 
-    private getProviderFromQueue(providerIndex: u64, type: ReservationType): Provider {
+    private getProviderFromQueue(providerIndex: u64, type: u8): Provider {
         const isInitialLiquidity = providerIndex === u32.MAX_VALUE;
         const providerId: u256 = isInitialLiquidity
             ? this._initialLiquidityProvider.value
@@ -1069,100 +1060,171 @@ export class LiquidityQueue {
     }
 
     private executeTrade(reservation: Reservation): CompletedTrade {
-        // 3. We'll parse how much BTC was actually sent to each queued provider
-        //    (similar logic to swap). Note that from the perspective of the queue,
-        //    the user is "buying" tokens from existing providers.
+        // 1) We gather the tx outputs to see how much BTC was actually sent to each provider's address.
         const outputs: TransactionOutput[] = Blockchain.tx.outputs;
 
-        // This is the quote *at the time of reservation*, so that the price for
-        // these partial fills is consistent with what was reserved.
+        // 2) The quoted price at the time of reservation
         const quoteAtReservation = this._quoteHistory.get(reservation.createdAt);
         if (quoteAtReservation.isZero()) {
             throw new Revert('Quote at reservation is zero. Unexpected error.');
         }
 
-        // 4. We iterate over each "provider index" the reservation had locked in.
-        //    We'll do partial fills if BTC was sent.
+        // 3) We retrieve the reservation's arrays
         const reservedIndexes: u32[] = reservation.getReservedIndexes();
         const reservedValues: u128[] = reservation.getReservedValues();
-        const reservedPriority: u8[] = reservation.getReservedPriority();
+        const queueTypes: u8[] = reservation.getQueueTypes();
 
-        let totalTokensPurchased = u256.Zero; // how many tokens we "bought" from sellers
-        let totalSatoshisSpent = u256.Zero; // how much BTC we actually sent out
+        let totalTokensPurchased = u256.Zero; // total tokens the buyer actually ends up with
+        let totalSatoshisSpent = u256.Zero; // total BTC actually paid out by the buyer
 
+        // 4) Iterate over each "provider" we had reserved in the queue
         for (let i = 0; i < reservedIndexes.length; i++) {
             const providerIndex: u64 = reservedIndexes[i];
-            const reservedAmount: u128 = reservedValues[i]; // in token units
-            const priority: u8 = reservedPriority[i];
+            const reservedAmount: u128 = reservedValues[i]; // how many tokens we reserved
+            const queueType: u8 = queueTypes[i]; // NORMAL, PRIORITY, or LIQUIDITY_REMOVAL
 
-            const provider: Provider = this.getProviderFromQueue(providerIndex, priority);
+            // 4a. Retrieve the correct provider from the queue
+            const provider: Provider = this.getProviderFromQueue(providerIndex, queueType);
 
-            // how many satoshis actually sent
+            // 4b. How many satoshis did the buyer actually send to `provider.btcReceiver`?
             const satoshisSent = this.findAmountForAddressInOutputUTXOs(
                 outputs,
                 provider.btcReceiver,
             );
 
+            // If no BTC is sent to this provider
             if (satoshisSent.isZero()) {
-                // no BTC => restore reserved tokens
-                this.restoreReservedLiquidityForProvider(provider, reservedAmount);
+                // If this is a removal provider, we also revert that portion
+                //         from _lpBTCowedReserved (since it never got paid).
+                if (queueType === LIQUIDITY_REMOVAL_TYPE && provider.pendingRemoval) {
+                    // Convert 'reservedAmount' back to sat (approx) using the original quote
+                    const costInSats = this.tokensToSatoshis(
+                        reservedAmount.toU256(),
+                        quoteAtReservation,
+                    );
+
+                    // clamp by actual owedReserved
+                    const owedReserved = this.getBTCowedReserved(provider.providerId);
+                    const revertSats = SafeMath.min(costInSats, owedReserved);
+
+                    // reduce the owedReserved by revertSats
+                    const newReserved = SafeMath.sub(owedReserved, revertSats);
+                    this.setBTCowedReserved(provider.providerId, newReserved);
+                } else if (queueType !== LIQUIDITY_REMOVAL_TYPE) {
+                    this.restoreReservedLiquidityForProvider(provider, reservedAmount);
+                }
+
+                // Nothing more for this provider, continue
                 continue;
             }
 
-            // 4b. Convert that sat amount to "tokens" based on quoteAtReservation
+            // 4c. Convert the satoshisSent to how many tokens the buyer *wants* to buy
             let tokensDesired = this.satoshisToTokens(satoshisSent, quoteAtReservation);
 
-            // clamp by what we actually reserved & by the provider's liquidity
-            tokensDesired = SafeMath.min(tokensDesired, reservedAmount.toU256());
-            tokensDesired = SafeMath.min(tokensDesired, provider.liquidity.toU256());
+            // 5) Distinguish removal-queue from normal/priority
+            if (queueType === LIQUIDITY_REMOVAL_TYPE && provider.pendingRemoval) {
+                // ========== REMOVAL PROVIDER LOGIC ==========
+                // The "reservedAmount" is the "token side" the buyer expects to get
+                // at the current ratio, but physically there's no tokens in provider.liquidity.
 
-            if (tokensDesired.isZero()) {
-                // If there's a mismatch or too little => restore
-                this.restoreReservedLiquidityForProvider(provider, reservedAmount);
-                continue;
+                // clamp satoshisSent by how much is in _lpBTCowedReserved
+                const owedReserved = this.getBTCowedReserved(provider.providerId);
+                const actualSpent = SafeMath.min(satoshisSent, owedReserved);
+
+                // Convert that sat amount to "token units" for the buyer
+                let tokensDesired = this.satoshisToTokens(actualSpent, quoteAtReservation);
+                // clamp by 'reservedAmount'
+                tokensDesired = SafeMath.min(tokensDesired, reservedAmount.toU256());
+
+                if (tokensDesired.isZero()) {
+                    // if zero => revert reservation from _lpBTCowedReserved
+                    const costInSats = this.tokensToSatoshis(
+                        reservedAmount.toU256(),
+                        quoteAtReservation,
+                    );
+                    const revertSats = SafeMath.min(costInSats, owedReserved);
+                    const newReserved = SafeMath.sub(owedReserved, revertSats);
+                    this.setBTCowedReserved(provider.providerId, newReserved);
+                    continue;
+                }
+
+                // final: remove from _lpBTCowedReserved
+                const newOwedReserved = SafeMath.sub(owedReserved, actualSpent);
+                this.setBTCowedReserved(provider.providerId, newOwedReserved);
+
+                // remove from real owed as well => they are "paid"
+                const oldOwed = this.getBTCowed(provider.providerId);
+                const newOwed = SafeMath.sub(oldOwed, actualSpent);
+                this.setBTCowed(provider.providerId, newOwed);
+
+                // If they are fully or (almost) fully paid => remove from removal queue
+                if (u256.lt(newOwed, LiquidityQueue.STRICT_MINIMUM_PROVIDER_RESERVATION_AMOUNT)) {
+                    this.removePendingLiquidityProviderFromRemovalQueue(
+                        provider,
+                        provider.indexedAt,
+                    );
+                }
+
+                // The buyer "receives" tokensDesired
+                totalTokensPurchased = SafeMath.add(totalTokensPurchased, tokensDesired);
+                totalSatoshisSpent = SafeMath.add(totalSatoshisSpent, actualSpent);
+            } else {
+                // ========== NORMAL / PRIORITY PROVIDER LOGIC ==========
+                // 6a. clamp by what we actually reserved and what’s in liquidity
+                tokensDesired = SafeMath.min(tokensDesired, reservedAmount.toU256());
+                tokensDesired = SafeMath.min(tokensDesired, provider.liquidity.toU256());
+
+                if (tokensDesired.isZero()) {
+                    // If mismatch or too little => restore
+                    this.restoreReservedLiquidityForProvider(provider, reservedAmount);
+                    continue;
+                }
+
+                // 6b. Deduct from the provider
+                const tokensDesiredU128 = tokensDesired.toU128();
+                if (u128.lt(provider.liquidity, tokensDesiredU128)) {
+                    throw new Revert('Impossible: liquidity < tokensDesired');
+                }
+
+                if (u128.lt(provider.reserved, tokensDesiredU128)) {
+                    throw new Revert('Impossible: reserved < tokensDesired');
+                }
+
+                if (
+                    !reservation.reservedLP &&
+                    !provider.canProvideLiquidity() &&
+                    provider.indexedAt !== u32.MAX_VALUE
+                ) {
+                    provider.enableLiquidityProvision();
+                    this.deltaTokensAdd = SafeMath.add(
+                        this.deltaTokensAdd,
+                        provider.liquidity.toU256(),
+                    );
+                }
+
+                provider.reserved = SafeMath.sub128(provider.reserved, tokensDesiredU128);
+                provider.liquidity = SafeMath.sub128(provider.liquidity, tokensDesiredU128);
+
+                // 6c. If leftover dust => reset
+                const satLeftValue = SafeMath.div(provider.liquidity.toU256(), quoteAtReservation);
+                if (
+                    u256.lt(satLeftValue, LiquidityQueue.STRICT_MINIMUM_PROVIDER_RESERVATION_AMOUNT)
+                ) {
+                    this.resetProvider(provider, false); // or pass `true` if you want to burn leftover
+                }
+
+                // 6d. Accumulate
+                totalTokensPurchased = SafeMath.add(totalTokensPurchased, tokensDesired);
+                totalSatoshisSpent = SafeMath.add(totalSatoshisSpent, satoshisSent);
             }
-
-            // 4c. Deduct from the provider
-            const tokensDesiredU128 = tokensDesired.toU128();
-            if (u128.lt(provider.liquidity, tokensDesiredU128)) {
-                throw new Revert('Impossible: liquidity < tokensDesired');
-            }
-            if (u128.lt(provider.reserved, tokensDesiredU128)) {
-                throw new Revert('Impossible: reserved < tokensDesired');
-            }
-
-            if (
-                !reservation.reservedLP &&
-                !provider.canProvideLiquidity() &&
-                provider.indexedAt !== u32.MAX_VALUE
-            ) {
-                provider.enableLiquidityProvision();
-                this.deltaTokensAdd = SafeMath.add(
-                    this.deltaTokensAdd,
-                    provider.liquidity.toU256(),
-                );
-                //this.sellTokens(provider.liquidity.toU256(), u256.Zero);
-            }
-
-            provider.reserved = SafeMath.sub128(provider.reserved, tokensDesiredU128);
-            provider.liquidity = SafeMath.sub128(provider.liquidity, tokensDesiredU128);
-
-            // 4d. Check for leftover dust => if provider.liquidity is too small,
-            //     we reset them out of the queue (similar to swap).
-            const satLeftValue = SafeMath.div(provider.liquidity.toU256(), quoteAtReservation);
-            if (u256.lt(satLeftValue, LiquidityQueue.STRICT_MINIMUM_PROVIDER_RESERVATION_AMOUNT)) {
-                this.resetProvider(provider);
-            }
-
-            // 4e. Accumulate the totals
-            totalTokensPurchased = SafeMath.add(totalTokensPurchased, tokensDesired);
-            totalSatoshisSpent = SafeMath.add(totalSatoshisSpent, satoshisSent);
         }
 
+        // 7) If we ended up not buying anything at all, revert
         if (totalTokensPurchased.isZero() && totalSatoshisSpent.isZero()) {
             throw new Revert('No tokens purchased. Did you send BTC to the provider addresses?');
         }
 
+        // 8) Return summary
         return new CompletedTrade(totalTokensPurchased, totalSatoshisSpent);
     }
 
@@ -1238,8 +1300,8 @@ export class LiquidityQueue {
         return SafeMath.div(numerator, LiquidityQueue.PERCENT_TOKENS_FOR_PRIORITY_FACTOR.toU256());
     }
 
-    private resetProvider(provider: Provider, transfer: boolean = true): void {
-        if (transfer && !provider.liquidity.isZero()) {
+    private resetProvider(provider: Provider, burnRemainingFunds: boolean = true): void {
+        if (burnRemainingFunds && !provider.liquidity.isZero()) {
             TransferHelper.safeTransfer(this.token, Address.dead(), provider.liquidity.toU256());
         }
 
@@ -1304,6 +1366,28 @@ export class LiquidityQueue {
             priorityIndex++;
         }
         this.previousReservationStartingIndex = priorityIndex;
+
+        // removal
+        const removalLength: u64 = this._removalQueue.getLength();
+        let removalIndex: u64 = this.previousRemovalStartingIndex;
+
+        while (removalIndex < removalLength) {
+            const providerId = this._removalQueue.get(removalIndex);
+            if (providerId === u256.Zero) {
+                removalIndex++;
+                continue;
+            }
+
+            const provider = getProvider(providerId);
+            if (provider.pendingRemoval) {
+                this._removalQueue.setStartingIndex(removalIndex);
+                break;
+            } else {
+                this._removalQueue.delete(removalIndex);
+            }
+            removalIndex++;
+        }
+        this.previousRemovalStartingIndex = removalIndex;
     }
 
     private findAmountForAddressInOutputUTXOs(outputs: TransactionOutput[], address: string): u256 {
@@ -1366,43 +1450,57 @@ export class LiquidityQueue {
 
                 const reservedIndexes: u32[] = reservation.getReservedIndexes();
                 const reservedValues: u128[] = reservation.getReservedValues();
-                const reservedPriority: u8[] = reservation.getReservedPriority();
+                const queueTypes: u8[] = reservation.getQueueTypes();
 
                 for (let j = 0; j < reservedIndexes.length; j++) {
                     const providerIndex: u64 = reservedIndexes[j];
                     const reservedAmount: u128 = reservedValues[j];
-                    const priority: u8 = reservedPriority[j];
-                    const provider: Provider = this.getProviderFromQueue(providerIndex, priority);
-                    
+                    const queueType: u8 = queueTypes[j];
+                    const provider: Provider = this.getProviderFromQueue(providerIndex, queueType);
+
                     if (u128.lt(provider.reserved, reservedAmount)) {
                         throw new Revert(
                             'Impossible: reserved amount bigger than provider reserve',
                         );
                     }
 
-                    provider.reserved = SafeMath.sub128(provider.reserved, reservedAmount);
+                    if (provider.pendingRemoval && queueType === LIQUIDITY_REMOVAL_TYPE) {
+                        const providerId = provider.providerId;
+                        const currentQuoteAtThatTime = this._quoteHistory.get(
+                            reservation.createdAt,
+                        );
 
-                    const availableLiquidity = SafeMath.sub128(
-                        provider.liquidity,
-                        provider.reserved,
-                    );
-                    if (
-                        u128.lt(
-                            availableLiquidity,
-                            LiquidityQueue.STRICT_MINIMUM_PROVIDER_RESERVATION_AMOUNT.toU128(),
-                        )
-                    ) {
-                        /*if (!isInitialLiquidity) {
-                            if (provider.isPriority()) {
-                                this._priorityQueue.delete(providerIndex);
-                            } else {
-                                this._queue.delete(providerIndex);
-                            }
+                        // figure out how many sat was associated with 'reservedAmount'
+                        const costInSats = this.tokensToSatoshis(
+                            reservedAmount.toU256(),
+                            currentQuoteAtThatTime,
+                        );
+
+                        // clamp by actual `_lpBTCowedReserved`
+                        const wasReservedSats = this.getBTCowedReserved(providerId);
+                        const revertSats = SafeMath.min(costInSats, wasReservedSats);
+
+                        // remove from owedReserved
+                        const newOwedReserved = SafeMath.sub(wasReservedSats, revertSats);
+                        this.setBTCowedReserved(providerId, newOwedReserved);
+                    } else {
+                        provider.reserved = SafeMath.sub128(provider.reserved, reservedAmount);
+
+                        const availableLiquidity = SafeMath.sub128(
+                            provider.liquidity,
+                            provider.reserved,
+                        );
+
+                        if (
+                            u128.lt(
+                                availableLiquidity,
+                                LiquidityQueue.STRICT_MINIMUM_PROVIDER_RESERVATION_AMOUNT.toU128(),
+                            )
+                        ) {
+                            this.resetProvider(provider, false);
                         }
-                        provider.reset();*/
-
-                        this.resetProvider(provider, false);
                     }
+
                     updatedOne = true;
                 }
 
@@ -1425,11 +1523,10 @@ export class LiquidityQueue {
             this.updateVirtualPoolIfNeeded();
             this.previousReservationStartingIndex = 0;
             this.previousReservationStandardStartingIndex = 0;
+            this.previousRemovalStartingIndex = 0;
         } else {
             this.onNoPurge();
         }
-
-        this.currentIndexRemoval = this.previousRemovalStartingIndex;
 
         this.lastPurgedBlock = currentBlockNumber;
     }
@@ -1437,6 +1534,7 @@ export class LiquidityQueue {
     private onNoPurge(): void {
         this.currentIndex = this.previousReservationStandardStartingIndex;
         this.currentIndexPriority = this.previousReservationStartingIndex;
+        this.currentIndexRemoval = this.previousRemovalStartingIndex;
     }
 
     private getReservationListForBlock(blockNumber: u64): StoredU128Array {
@@ -1475,6 +1573,7 @@ export class LiquidityQueue {
 
     private removePendingLiquidityProviderFromRemovalQueue(provider: Provider, i: u64): void {
         this._removalQueue.delete(i);
+
         provider.pendingRemoval = false;
         provider.isLp = false;
     }

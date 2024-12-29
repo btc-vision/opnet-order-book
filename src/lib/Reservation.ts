@@ -18,11 +18,9 @@ import { u128, u256 } from '@btc-vision/as-bignum/assembly';
 import { UserReservation } from '../data-types/UserReservation';
 import { LiquidityQueue } from './LiquidityQueue';
 
-export enum ReservationType {
-    NORMAL = 0,
-    PRIORITY = 1,
-    LIQUIDITY_REMOVAL = 2,
-}
+export const NORMAL_TYPE: u8 = 0;
+export const PRIORITY_TYPE: u8 = 1;
+export const LIQUIDITY_REMOVAL_TYPE: u8 = 2;
 
 export class Reservation {
     public reservedIndexes: StoredU32Array;
@@ -129,7 +127,7 @@ export class Reservation {
         this.reservedPriority.push(type);
     }
 
-    public getReservedPriority(): u8[] {
+    public getQueueTypes(): u8[] {
         return this.reservedPriority.getAll(0, this.reservedPriority.getLength());
     }
 

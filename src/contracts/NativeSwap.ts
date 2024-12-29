@@ -59,6 +59,8 @@ export class NativeSwap extends OP_NET {
                 return this.setFees(calldata);
             case encodeSelector('addLiquidity'):
                 return this.addLiquidity(calldata);
+            case encodeSelector('removeLiquidity'):
+                return this.removeLiquidity(calldata);
 
             /** Readable methods */
             case encodeSelector('getReserve'):
@@ -119,6 +121,17 @@ export class NativeSwap extends OP_NET {
 
         const queue = this.getLiquidityQueue(token, this.addressToPointer(token));
         queue.addLiquidity(providerId, receiver);
+        queue.save();
+
+        return new BytesWriter(1);
+    }
+
+    private removeLiquidity(calldata: Calldata): BytesWriter {
+        const token = calldata.readAddress();
+        const providerId = this.addressToPointerU256(Blockchain.tx.sender, token);
+
+        const queue = this.getLiquidityQueue(token, this.addressToPointer(token));
+        queue.removeLiquidity(providerId);
         queue.save();
 
         return new BytesWriter(1);
