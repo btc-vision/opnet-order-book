@@ -642,8 +642,12 @@ export class LiquidityQueue {
         // 2. First, execute the trade to see how many tokens were purchased (T)
         //    and how much BTC was used (B).
         const trade = this.executeTrade(reservation);
-        const tokensBoughtFromQueue = trade.totalTokensPurchased; // T
-        const btcSpent = trade.totalSatoshisSpent; // B
+        const tokensBoughtFromQueue = SafeMath.add(
+            trade.totalTokensPurchased,
+            trade.totalTokensRefunded,
+        ); // T
+
+        const btcSpent = SafeMath.add(trade.totalSatoshisSpent, trade.totalRefundedBTC); // B
 
         if (tokensBoughtFromQueue.isZero() || btcSpent.isZero()) {
             throw new Revert('No effective purchase made. Check your BTC outputs.');
@@ -670,11 +674,20 @@ export class LiquidityQueue {
 
         // 5a. Also register these newly deposited tokens in the "deltaTokensAdd"
         //     so the next block can adjust the pool formula.
-        this.deltaTokensAdd = SafeMath.add(this.deltaTokensAdd, tokensBoughtFromQueue);
+        //this.deltaTokensAdd = SafeMath.add(this.deltaTokensAdd, tokensBoughtFromQueue);
+
+        //const vBTC = this.tokensToSatoshis(tokensBoughtFromQueue, this.quote());
+        //this.deltaTokensBuy = SafeMath.add(this.deltaTokensBuy, tokensBoughtFromQueue);
+        //this.deltaTokensSell = SafeMath.add(this.deltaTokensSell, tokensBoughtFromQueue);
+
+        //this.deltaBTCBuy = SafeMath.add(this.deltaTokensSell, btcSpent);
+
+        this.virtualBTCReserve = SafeMath.add(this.virtualBTCReserve, btcSpent);
+        this.virtualTokenReserve = SafeMath.add(this.virtualTokenReserve, tokensBoughtFromQueue);
 
         // 6. Because from the pool’s perspective, we had a "net buy" of tokens
         //    with `btcSpent` BTC. That is captured in buyTokens(...).
-        this.buyTokens(tokensBoughtFromQueue, btcSpent);
+        //this.buyTokens(tokensBoughtFromQueue, btcSpent);
 
         // 7. Credit the user’s "virtual BTC" so they can withdraw it later in removeLiquidity.
         const owedBefore = this.getBTCowed(providerId);
@@ -703,7 +716,7 @@ export class LiquidityQueue {
 
         Blockchain.emit(
             new LiquidityAddedEvent(
-                SafeMath.add(trade.totalTokensPurchased, tokensBoughtFromQueue), // The tokens from the user wallet
+                SafeMath.add(tokensBoughtFromQueue, tokensBoughtFromQueue), // The tokens from the user wallet
                 tokensBoughtFromQueue, // The tokens purchased from queue (if you want to track them separately)
                 btcSpent,
             ),
@@ -743,6 +756,9 @@ export class LiquidityQueue {
 
             // set provider.liquidityProvided = 0
             provider.liquidityProvided = u256.Zero;
+
+            this.virtualTokenReserve = SafeMath.sub(this.virtualTokenReserve, tokenAmount);
+            this.virtualBTCReserve = SafeMath.sub(this.virtualBTCReserve, btcOwed);
         } else {
             throw new Revert('You have no tokens to remove.');
         }
@@ -941,16 +957,22 @@ export class LiquidityQueue {
 
         // Execute the trade
         const trade = this.executeTrade(reservation);
+        const totalTokensPurchased = SafeMath.add(
+            trade.totalTokensPurchased,
+            trade.totalTokensRefunded,
+        );
+
+        const totalSatoshisSpent = SafeMath.add(trade.totalSatoshisSpent, trade.totalRefundedBTC);
 
         // transfer tokens to buyer
-        TransferHelper.safeTransfer(this.token, buyer, trade.totalTokensPurchased);
+        TransferHelper.safeTransfer(this.token, buyer, totalTokensPurchased);
 
         // update total reserves
-        this.updateTotalReserved(this.tokenId, trade.totalTokensPurchased, false);
-        this.updateTotalReserve(this.tokenId, trade.totalTokensPurchased, false);
+        this.updateTotalReserved(this.tokenId, totalTokensPurchased, false);
+        this.updateTotalReserve(this.tokenId, totalTokensPurchased, false);
 
         // update accumulators
-        this.buyTokens(trade.totalTokensPurchased, trade.totalSatoshisSpent);
+        this.buyTokens(totalTokensPurchased, totalSatoshisSpent);
 
         // end of swap => remove reservation
         reservation.delete();
@@ -958,11 +980,7 @@ export class LiquidityQueue {
         // cleanup
         this.cleanUpQueues();
 
-        const ev = new SwapExecutedEvent(
-            buyer,
-            trade.totalSatoshisSpent,
-            trade.totalTokensPurchased,
-        );
+        const ev = new SwapExecutedEvent(buyer, totalSatoshisSpent, totalTokensPurchased);
         Blockchain.emit(ev);
     }
 
@@ -1117,6 +1135,8 @@ export class LiquidityQueue {
 
         let totalTokensPurchased = u256.Zero; // total tokens the buyer actually ends up with
         let totalSatoshisSpent = u256.Zero; // total BTC actually paid out by the buyer
+        let totalRefundedBTC = u256.Zero; // total BTC refunded to the buyer
+        let totalTokensRefunded = u256.Zero; // total tokens refunded to the buyer
 
         // 4) Iterate over each "provider" we had reserved in the queue
         for (let i = 0; i < reservedIndexes.length; i++) {
@@ -1207,6 +1227,8 @@ export class LiquidityQueue {
                 const newOwed = SafeMath.sub(oldOwed, actualSpent);
                 this.setBTCowed(provider.providerId, newOwed);
 
+                Blockchain.log(`newOwed: ${newOwed.toString()}`);
+
                 // If they are fully or (almost) fully paid => remove from removal queue
                 if (u256.lt(newOwed, LiquidityQueue.STRICT_MINIMUM_PROVIDER_RESERVATION_AMOUNT)) {
                     this.removePendingLiquidityProviderFromRemovalQueue(
@@ -1216,8 +1238,10 @@ export class LiquidityQueue {
                 }
 
                 // The buyer "receives" tokensDesired
-                totalTokensPurchased = SafeMath.add(totalTokensPurchased, tokensDesired);
-                totalSatoshisSpent = SafeMath.add(totalSatoshisSpent, actualSpent);
+                //totalTokensPurchased = SafeMath.add(totalTokensPurchased, tokensDesired);
+                //totalSatoshisSpent = SafeMath.add(totalSatoshisSpent, actualSpent);
+                totalRefundedBTC = SafeMath.add(totalRefundedBTC, actualSpent);
+                totalTokensRefunded = SafeMath.add(totalTokensRefunded, tokensDesired);
 
                 this.reportUTXOUsed(provider.btcReceiver, actualSpent.toU64());
             } else {
@@ -1276,12 +1300,22 @@ export class LiquidityQueue {
         }
 
         // 7) If we ended up not buying anything at all, revert
-        if (totalTokensPurchased.isZero() && totalSatoshisSpent.isZero()) {
+        if (
+            totalTokensPurchased.isZero() &&
+            totalSatoshisSpent.isZero() &&
+            totalRefundedBTC.isZero() &&
+            totalTokensRefunded.isZero()
+        ) {
             throw new Revert('No tokens purchased. Did you send BTC to the provider addresses?');
         }
 
         // 8) Return summary
-        return new CompletedTrade(totalTokensPurchased, totalSatoshisSpent);
+        return new CompletedTrade(
+            totalTokensPurchased,
+            totalSatoshisSpent,
+            totalRefundedBTC,
+            totalTokensRefunded,
+        );
     }
 
     private getReservationWithExpirationChecks(): Reservation {
@@ -1641,6 +1675,8 @@ export class LiquidityQueue {
 
         provider.pendingRemoval = false;
         provider.isLp = false;
+
+        Blockchain.log(`Provider ${provider.providerId} removed from removal queue`);
     }
 
     private getNextRemovalQueueProvider(): Provider | null {
@@ -1725,6 +1761,7 @@ export class LiquidityQueue {
                 this.currentIndexPriority++;
                 continue;
             }
+
             provider = getProvider(providerId);
             if (!provider.isActive()) {
                 this.currentIndexPriority++;
@@ -1740,6 +1777,7 @@ export class LiquidityQueue {
                     `Impossible state: liquidity < reserved for provider ${providerId}.`,
                 );
             }
+
             const availableLiquidity: u128 = SafeMath.sub128(provider.liquidity, provider.reserved);
             if (!availableLiquidity.isZero()) {
                 provider.indexedAt = i;

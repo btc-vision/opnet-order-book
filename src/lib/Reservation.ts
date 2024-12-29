@@ -117,7 +117,7 @@ export class Reservation {
         this.reservedValues.reset();
         this.reservedPriority.reset();
         this.userReservation.reset();
-
+        
         this.save();
     }
 
