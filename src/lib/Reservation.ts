@@ -62,6 +62,14 @@ export class Reservation {
         this.userReservation.setUserTimeoutBlockExpiration(block);
     }
 
+    public get reservedLP(): bool {
+        return this.userReservation.reservedForLiquidityPool;
+    }
+
+    public set reservedLP(value: bool) {
+        this.userReservation.reservedForLiquidityPool = value;
+    }
+
     public static load(reservationId: u128): Reservation {
         return new Reservation(Address.dead(), Address.dead(), reservationId.toUint8Array(true));
     }

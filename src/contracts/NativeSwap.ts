@@ -51,8 +51,8 @@ export class NativeSwap extends OP_NET {
                 return this.swap(calldata);
             case encodeSelector('listLiquidity'):
                 return this.listLiquidity(calldata);
-            case encodeSelector('unlistLiquidity'):
-                return this.unlistLiquidity(calldata);
+            case encodeSelector('cancelListing'):
+                return this.cancelListing(calldata);
             case encodeSelector('createPool'): // aka enable trading
                 return this.createPool(calldata);
             case encodeSelector('setFees'):
@@ -205,7 +205,7 @@ export class NativeSwap extends OP_NET {
         const tokenId = this.addressToPointer(token);
 
         const queue = this.getLiquidityQueue(token, tokenId);
-        queue.listLiquidity(providerId, amountIn, receiver, priority);
+        queue.listTokensForSale(providerId, amountIn, receiver, priority);
         queue.save();
 
         // Return success
@@ -221,16 +221,17 @@ export class NativeSwap extends OP_NET {
         const token: Address = calldata.readAddress();
         const maximumAmountIn: u256 = calldata.readU256();
         const minimumAmountOut: u256 = calldata.readU256();
+        const forLP: bool = calldata.readBoolean();
 
-        return this._reserve(token, maximumAmountIn, minimumAmountOut);
+        return this._reserve(token, maximumAmountIn, minimumAmountOut, forLP);
     }
 
-    private _reserve(token: Address, maximumAmountIn: u256, minimumAmountOut: u256): BytesWriter {
+    private _reserve(token: Address, maximumAmountIn: u256, minimumAmountOut: u256, forLP: bool): BytesWriter {
         // Validate
         if (token.empty() || token.equals(Blockchain.DEAD_ADDRESS)) {
             throw new Revert('ORDER_BOOK: Invalid token address');
         }
-        
+
         if (maximumAmountIn.isZero()) {
             throw new Revert('ORDER_BOOK: Maximum amount in cannot be zero');
         }
@@ -252,7 +253,7 @@ export class NativeSwap extends OP_NET {
 
         const buyer: Address = Blockchain.tx.sender;
         const queue = this.getLiquidityQueue(token, this.addressToPointer(token));
-        const reserved = queue.reserveLiquidity(buyer, maximumAmountIn, minimumAmountOut);
+        const reserved = queue.reserveLiquidity(buyer, maximumAmountIn, minimumAmountOut, forLP);
         queue.save();
 
         const result = new BytesWriter(32);
@@ -263,12 +264,12 @@ export class NativeSwap extends OP_NET {
     //=================================================
     // REMOVE LIQUIDITY
     //=================================================
-    private unlistLiquidity(calldata: Calldata): BytesWriter {
+    private cancelListing(calldata: Calldata): BytesWriter {
         const token: Address = calldata.readAddress();
-        return this._unlistLiquidity(token);
+        return this._cancelListing(token);
     }
 
-    private _unlistLiquidity(token: Address): BytesWriter {
+    private _cancelListing(token: Address): BytesWriter {
         if (token.empty() || token.equals(Blockchain.DEAD_ADDRESS)) {
             throw new Revert('Invalid token address');
         }
@@ -277,7 +278,7 @@ export class NativeSwap extends OP_NET {
         const tokenId = this.addressToPointer(token);
 
         const queue = this.getLiquidityQueue(token, tokenId);
-        const totalTokensReturned = queue.unlistLiquidity(providerId);
+        const totalTokensReturned = queue.cancelListing(providerId);
         queue.save();
 
         // Serialize the total tokens returned
@@ -300,7 +301,7 @@ export class NativeSwap extends OP_NET {
         }
 
         const queue: LiquidityQueue = this.getLiquidityQueue(token, this.addressToPointer(token));
-        queue.swap(Blockchain.tx.sender);
+        queue.swap();
         queue.save();
 
         const result = new BytesWriter(1);

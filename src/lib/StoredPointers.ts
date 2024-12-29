@@ -4,6 +4,7 @@ export const FEE_SETTINGS_POINTER: u16 = Blockchain.nextPointer;
 export const TOTAL_RESERVES_POINTER: u16 = Blockchain.nextPointer;
 
 export const PROVIDER_LIQUIDITY_POINTER: u16 = Blockchain.nextPointer;
+export const LIQUIDITY_PROVIDER_POINTER: u16 = Blockchain.nextPointer;
 export const PROVIDER_ADDRESS_POINTER: u16 = Blockchain.nextPointer;
 
 export const LIQUIDITY_QUOTE_HISTORY_POINTER: u16 = Blockchain.nextPointer;
@@ -32,3 +33,4 @@ export const DELTA_TOKENS_ADD: u16 = Blockchain.nextPointer;
 export const DELTA_TOKENS_BUY: u16 = Blockchain.nextPointer;
 export const DELTA_BTC_SELL: u16 = Blockchain.nextPointer;
 export const DELTA_TOKENS_SELL: u16 = Blockchain.nextPointer;
+export const LP_BTC_OWED_POINTER: u16 = Blockchain.nextPointer;

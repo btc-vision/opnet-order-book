@@ -11,6 +11,8 @@ import {
 export class UserReservation {
     private readonly u256Pointer: u256;
 
+    private reservedLP: u8 = 0;
+
     private expirationBlock: u64 = 0;
     private priorityIndex: u64 = 0;
     private userTimeoutBlockExpiration: u64 = 0;
@@ -32,6 +34,22 @@ export class UserReservation {
         writer.writeU256(subPointer);
 
         this.u256Pointer = encodePointer(pointer, writer.getBuffer());
+    }
+
+    @inline
+    public get reservedForLiquidityPool(): bool {
+        this.ensureValues();
+        return this.reservedLP == 1;
+    }
+
+    @inline
+    public set reservedForLiquidityPool(value: bool) {
+        this.ensureValues();
+
+        if (this.reservedLP != (value ? 1 : 0)) {
+            this.reservedLP = value ? 1 : 0;
+            this.isChanged = true;
+        }
     }
 
     /**
@@ -104,6 +122,7 @@ export class UserReservation {
     public reset(): void {
         this.expirationBlock = 0;
         this.priorityIndex = 0;
+        this.reservedLP = 0;
         this.isChanged = true;
     }
 
@@ -130,6 +149,15 @@ export class UserReservation {
         return packed.toBytes();
     }
 
+    private unpackFlags(flag: u8): void {
+        this.reservedLP = flag & 0b1;
+        // (flag >> 1) & 0b1;
+    }
+
+    private packFlags(): u8 {
+        return this.reservedLP;
+    }
+
     /**
      * @private
      * @method ensureValues
@@ -140,6 +168,9 @@ export class UserReservation {
             const storedU256: u256 = Blockchain.getStorageAt(this.u256Pointer, u256.Zero);
             const reader = new BytesReader(storedU256.toUint8Array(true));
 
+            // Unpack flags (1 byte)
+            this.unpackFlags(reader.readU8());
+
             // Unpack expirationBlock (8 bytes, little endian)
             this.expirationBlock = reader.readU64();
 
@@ -149,7 +180,6 @@ export class UserReservation {
             // Unpack userTimeoutBlockExpiration (8 bytes, little endian)
             this.userTimeoutBlockExpiration = reader.readU64();
 
-            // Skip remaining bytes (if any)
             this.isLoaded = true;
         }
     }
@@ -162,6 +192,9 @@ export class UserReservation {
      */
     private packValues(): u256 {
         const writer = new BytesWriter(32);
+
+        // Pack flags (1 byte)
+        writer.writeU8(this.packFlags());
 
         // Pack expirationBlock (8 bytes, little endian)
         writer.writeU64(this.expirationBlock);

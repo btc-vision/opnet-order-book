@@ -2,7 +2,11 @@ import { u128, u256 } from '@btc-vision/as-bignum/assembly';
 import { Potential } from '@btc-vision/btc-runtime/runtime';
 import { AdvancedStoredString } from '../stored/AdvancedStoredString';
 import { UserLiquidity } from '../data-types/UserLiquidity';
-import { PROVIDER_ADDRESS_POINTER, PROVIDER_LIQUIDITY_POINTER } from './StoredPointers';
+import {
+    LIQUIDITY_PROVIDER_POINTER,
+    PROVIDER_ADDRESS_POINTER,
+    PROVIDER_LIQUIDITY_POINTER,
+} from './StoredPointers';
 
 export class Provider {
     public providerId: u256;
@@ -13,7 +17,27 @@ export class Provider {
     constructor(providerId: u256) {
         this.providerId = providerId;
 
-        this.userLiquidity = new UserLiquidity(PROVIDER_LIQUIDITY_POINTER, providerId);
+        this.userLiquidity = new UserLiquidity(
+            PROVIDER_LIQUIDITY_POINTER,
+            LIQUIDITY_PROVIDER_POINTER,
+            providerId,
+        );
+    }
+
+    public get isLp(): boolean {
+        return this.userLiquidity.isLp();
+    }
+
+    public set isLp(value: boolean) {
+        this.userLiquidity.setIsLp(value);
+    }
+
+    public get liquidityProvided(): u256 {
+        return this.userLiquidity.getLiquidityProvided();
+    }
+
+    public set liquidityProvided(value: u256) {
+        this.userLiquidity.setLiquidityProvided(value);
     }
 
     public get liquidity(): u128 {

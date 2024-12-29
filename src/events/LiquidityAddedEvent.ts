@@ -1,12 +1,12 @@
 import { BytesWriter, NetEvent } from '@btc-vision/btc-runtime/runtime';
-import { u128 } from '@btc-vision/as-bignum/assembly';
+import { u256 } from '@btc-vision/as-bignum/assembly';
 
 @final
 export class LiquidityAddedEvent extends NetEvent {
-    constructor(totalLiquidity: u128, provider: string) {
-        const data: BytesWriter = new BytesWriter(16 + 2 + provider.length);
-        data.writeU128(totalLiquidity);
-        data.writeStringWithLength(provider); // Write provider as string
+    constructor(T: u256, B: u256) {
+        const data: BytesWriter = new BytesWriter(32 + 32);
+        data.writeU256(T);
+        data.writeU256(B);
 
         super('LiquidityAdded', data);
     }
