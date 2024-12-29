@@ -620,7 +620,7 @@ export class LiquidityQueue {
 
     public addLiquidity(providerId: u256, receiver: string): void {
         this.updateVirtualPoolIfNeeded();
-        
+
         const providerSelf = getProvider(providerId);
         if (providerSelf.pendingRemoval) {
             throw new Revert(

@@ -32,6 +32,7 @@ export class UserLiquidity {
 
     // Flags to manage state
     private isLoaded: bool = false;
+    private isLoadedProvider: bool = false;
     private isChanged: bool = false;
     private liquidityChanged: bool = false;
 
@@ -213,20 +214,20 @@ export class UserLiquidity {
         this.ensureValues();
         if (this.isLiquidityProvider != (isLp ? 1 : 0)) {
             this.isLiquidityProvider = isLp ? 1 : 0;
-            this.liquidityChanged = true;
+            this.isChanged = true;
         }
     }
 
     @inline
     public getLiquidityProvided(): u256 {
-        this.ensureValues();
+        this.ensureLoadedLiquidity();
         return this.liquidityProvided;
     }
 
     @inline
     public setLiquidityProvided(liquidityProvided: u256): void {
-        this.ensureValues();
-        if (this.liquidityProvided != liquidityProvided) {
+        this.ensureLoadedLiquidity();
+        if (!u256.eq(this.liquidityProvided, liquidityProvided)) {
             this.liquidityProvided = liquidityProvided;
             this.liquidityChanged = true;
         }
@@ -253,6 +254,13 @@ export class UserLiquidity {
         this.ensureValues();
         const packed = this.packValues();
         return packed.toBytes();
+    }
+
+    private ensureLoadedLiquidity(): void {
+        if (!this.isLoadedProvider) {
+            this.liquidityProvided = Blockchain.getStorageAt(this.liquidityPointer, u256.Zero);
+            this.isLoadedProvider = true;
+        }
     }
 
     /**
