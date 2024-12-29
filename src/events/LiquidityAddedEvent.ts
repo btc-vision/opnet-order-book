@@ -3,10 +3,15 @@ import { u256 } from '@btc-vision/as-bignum/assembly';
 
 @final
 export class LiquidityAddedEvent extends NetEvent {
-    constructor(T: u256, B: u256) {
-        const data: BytesWriter = new BytesWriter(32 + 32);
-        data.writeU256(T);
-        data.writeU256(B);
+    constructor(
+        totalTokensContributed: u256,
+        virtualTokenExchanged: u256,
+        totalSatoshisSpent: u256,
+    ) {
+        const data: BytesWriter = new BytesWriter(32 + 32 + 32);
+        data.writeU256(totalTokensContributed);
+        data.writeU256(virtualTokenExchanged);
+        data.writeU256(totalSatoshisSpent);
 
         super('LiquidityAdded', data);
     }

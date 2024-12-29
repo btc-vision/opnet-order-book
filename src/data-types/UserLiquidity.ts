@@ -24,6 +24,7 @@ export class UserLiquidity {
     private priorityFlag: u8 = 0;
     private canProvide: u8 = 0;
     private isLiquidityProvider: u8 = 0;
+    private isPendingRemoval: u8 = 0;
 
     private liquidityAmount: u128 = u128.Zero;
     private reservedAmount: u128 = u128.Zero;
@@ -37,7 +38,7 @@ export class UserLiquidity {
     /**
      * @constructor
      * @param {u16} pointer - The primary pointer identifier.
-     * @param liquidityPointer
+     * @param {u16} liquidityPointer - The liquidity pointer identifier.
      * @param {MemorySlotPointer} subPointer - The sub-pointer for memory slot addressing.
      */
     constructor(pointer: u16, liquidityPointer: u16, subPointer: MemorySlotPointer) {
@@ -47,7 +48,20 @@ export class UserLiquidity {
         const buffer: Uint8Array = writer.getBuffer();
 
         this.u256Pointer = encodePointer(pointer, buffer);
-        this.liquidityPointer = encodePointer(pointer, buffer);
+        this.liquidityPointer = encodePointer(liquidityPointer, buffer);
+    }
+
+    public get pendingRemoval(): boolean {
+        this.ensureValues();
+        return this.isPendingRemoval == 1;
+    }
+
+    public set pendingRemoval(pending: boolean) {
+        this.ensureValues();
+        if (this.isPendingRemoval != (pending ? 1 : 0)) {
+            this.isPendingRemoval = pending ? 1 : 0;
+            this.isChanged = true;
+        }
     }
 
     /**
@@ -257,6 +271,7 @@ export class UserLiquidity {
             this.priorityFlag = (flag >> 1) & 0b1;
             this.canProvide = (flag >> 2) & 0b1;
             this.isLiquidityProvider = (flag >> 3) & 0b1;
+            this.isPendingRemoval = (flag >> 4) & 0b1;
 
             // Unpack liquidityAmount (16 bytes, little endian)
             this.liquidityAmount = reader.readU128();
@@ -285,7 +300,8 @@ export class UserLiquidity {
             this.activeFlag |
             (this.priorityFlag << 1) |
             (this.canProvide << 2) |
-            (this.isLiquidityProvider << 3);
+            (this.isLiquidityProvider << 3) |
+            (this.isPendingRemoval << 4);
 
         writer.writeU8(flag);
 

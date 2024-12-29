@@ -24,6 +24,14 @@ export class Provider {
         );
     }
 
+    public get pendingRemoval(): boolean {
+        return this.userLiquidity.pendingRemoval;
+    }
+
+    public set pendingRemoval(value: boolean) {
+        this.userLiquidity.pendingRemoval = value;
+    }
+
     public get isLp(): boolean {
         return this.userLiquidity.isLp();
     }

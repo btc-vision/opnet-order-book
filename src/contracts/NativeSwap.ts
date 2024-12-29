@@ -114,11 +114,11 @@ export class NativeSwap extends OP_NET {
 
     private addLiquidity(calldata: Calldata): BytesWriter {
         const token = calldata.readAddress();
-        const amount = calldata.readU256();
+        const receiver = calldata.readStringWithLength();
         const providerId = this.addressToPointerU256(Blockchain.tx.sender, token);
 
         const queue = this.getLiquidityQueue(token, this.addressToPointer(token));
-        queue.addLiquidity(providerId, amount);
+        queue.addLiquidity(providerId, receiver);
         queue.save();
 
         return new BytesWriter(1);
@@ -226,7 +226,12 @@ export class NativeSwap extends OP_NET {
         return this._reserve(token, maximumAmountIn, minimumAmountOut, forLP);
     }
 
-    private _reserve(token: Address, maximumAmountIn: u256, minimumAmountOut: u256, forLP: bool): BytesWriter {
+    private _reserve(
+        token: Address,
+        maximumAmountIn: u256,
+        minimumAmountOut: u256,
+        forLP: bool,
+    ): BytesWriter {
         // Validate
         if (token.empty() || token.equals(Blockchain.DEAD_ADDRESS)) {
             throw new Revert('ORDER_BOOK: Invalid token address');

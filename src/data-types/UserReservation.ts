@@ -36,13 +36,11 @@ export class UserReservation {
         this.u256Pointer = encodePointer(pointer, writer.getBuffer());
     }
 
-    @inline
     public get reservedForLiquidityPool(): bool {
         this.ensureValues();
         return this.reservedLP == 1;
     }
 
-    @inline
     public set reservedForLiquidityPool(value: bool) {
         this.ensureValues();
 

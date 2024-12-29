@@ -3,9 +3,9 @@ import {
     ADDRESS_BYTE_LENGTH,
     Blockchain,
     BytesWriter,
-    StoredBooleanArray,
     StoredU128Array,
     StoredU32Array,
+    StoredU8Array,
 } from '@btc-vision/btc-runtime/runtime';
 import {
     RESERVATION_AMOUNTS,
@@ -18,10 +18,16 @@ import { u128, u256 } from '@btc-vision/as-bignum/assembly';
 import { UserReservation } from '../data-types/UserReservation';
 import { LiquidityQueue } from './LiquidityQueue';
 
+export enum ReservationType {
+    NORMAL = 0,
+    PRIORITY = 1,
+    LIQUIDITY_REMOVAL = 2,
+}
+
 export class Reservation {
     public reservedIndexes: StoredU32Array;
     public reservedValues: StoredU128Array;
-    public reservedPriority: StoredBooleanArray;
+    public reservedPriority: StoredU8Array;
 
     public reservationId: u128;
     public userReservation: UserReservation;
@@ -41,11 +47,7 @@ export class Reservation {
 
         this.reservedIndexes = new StoredU32Array(RESERVATION_INDEXES, reservationId, u256.Zero);
         this.reservedValues = new StoredU128Array(RESERVATION_AMOUNTS, reservationId, u256.Zero);
-        this.reservedPriority = new StoredBooleanArray(
-            RESERVATION_PRIORITY,
-            reservationId,
-            u256.Zero,
-        );
+        this.reservedPriority = new StoredU8Array(RESERVATION_PRIORITY, reservationId, u256.Zero);
     }
 
     public get createdAt(): u64 {
@@ -121,13 +123,13 @@ export class Reservation {
         this.save();
     }
 
-    public reserveAtIndex(index: u32, amount: u128, priority: boolean): void {
+    public reserveAtIndex(index: u32, amount: u128, type: u8): void {
         this.reservedIndexes.push(index);
         this.reservedValues.push(amount);
-        this.reservedPriority.push(priority);
+        this.reservedPriority.push(type);
     }
 
-    public getReservedPriority(): bool[] {
+    public getReservedPriority(): u8[] {
         return this.reservedPriority.getAll(0, this.reservedPriority.getLength());
     }
 
