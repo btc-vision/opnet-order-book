@@ -60,7 +60,7 @@ Putting it all together, we arrive at the core question for this entire system:
 
 2. **One-Sided Pool**
     - This pool is "one-sided" because it physically contains tokens only.
-    - The BTC side exists in the contract's ledger, adjusting over time as trades come in.
+    - The BTC side exists in the contract's ledger (virtualized), adjusting over time as trades come in.
 
 ### 6.2. FIFO "Listings" (Sell Swap Queue)
 
