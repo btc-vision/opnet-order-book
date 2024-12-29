@@ -2,7 +2,7 @@
 
 ## 1. The Core Problem: Noncustodial AMM using native bitcoin
 
-**Goal:** We want a noncustodial Automated Market Maker (AMM) that uses *native* Bitcoin—no centralized custody, no
+**Goal:** We want a noncustodial Automated Market Maker (AMM) that uses *native* Bitcoin, no centralized custody, no
 synthetic token stand-ins.
 
 **Challenge:** Bitcoin's script capabilities are limited. On Ethereum, smart contracts can hold both sides of a
@@ -86,7 +86,7 @@ is deferred.
 
 ### 6.4. Swaps & Block-Based Updates
 
-- The contract updates price at discrete intervals—often once per swap or per block.
+- The contract updates price at discrete intervals, often once per swap or per block.
 - If a block passes with no actions, no new price is calculated.
 - This approach helps prevent chaotic price movements from front-running or partial transaction ordering.
 
