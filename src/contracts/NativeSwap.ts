@@ -123,7 +123,9 @@ export class NativeSwap extends OP_NET {
         queue.addLiquidity(providerId, receiver);
         queue.save();
 
-        return new BytesWriter(1);
+        const result = new BytesWriter(1);
+        result.writeBoolean(true);
+        return result;
     }
 
     private removeLiquidity(calldata: Calldata): BytesWriter {
@@ -134,7 +136,9 @@ export class NativeSwap extends OP_NET {
         queue.removeLiquidity(providerId);
         queue.save();
 
-        return new BytesWriter(1);
+        const result = new BytesWriter(1);
+        result.writeBoolean(true);
+        return result;
     }
 
     private createPool(calldata: Calldata): BytesWriter {

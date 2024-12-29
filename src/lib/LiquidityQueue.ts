@@ -619,6 +619,8 @@ export class LiquidityQueue {
     }
 
     public addLiquidity(providerId: u256, receiver: string): void {
+        this.updateVirtualPoolIfNeeded();
+        
         const providerSelf = getProvider(providerId);
         if (providerSelf.pendingRemoval) {
             throw new Revert(
@@ -696,7 +698,7 @@ export class LiquidityQueue {
 
         Blockchain.emit(
             new LiquidityAddedEvent(
-                tokensBoughtFromQueue, // The tokens from the user wallet
+                SafeMath.add(trade.totalTokensPurchased, tokensBoughtFromQueue), // The tokens from the user wallet
                 tokensBoughtFromQueue, // The tokens purchased from queue (if you want to track them separately)
                 btcSpent,
             ),
