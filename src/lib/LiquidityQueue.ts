@@ -988,7 +988,7 @@ export class LiquidityQueue {
 
         if (!dT_buy.isZero()) {
             let Tprime: u256;
-            if (u256.gt(dT_buy, T)) {
+            if (u256.ge(dT_buy, T)) {
                 Tprime = u256.One;
             } else {
                 Tprime = SafeMath.sub(T, dT_buy);
