@@ -747,29 +747,24 @@ export class LiquidityQueue {
 
         // 3. Return the token portion immediately to the user
         const tokenAmount: u256 = provider.liquidityProvided;
-        if (!tokenAmount.isZero()) {
-            // send tokens from the contract to the user
-            TransferHelper.safeTransfer(this.token, Blockchain.tx.sender, tokenAmount);
-
-            // remove them from total reserves
-            this.updateTotalReserve(this.tokenId, tokenAmount, false);
-
-            // set provider.liquidityProvided = 0
-            provider.liquidityProvided = u256.Zero;
-
-            this.virtualTokenReserve = SafeMath.sub(this.virtualTokenReserve, tokenAmount);
-            this.virtualBTCReserve = SafeMath.sub(this.virtualBTCReserve, btcOwed);
-        } else {
+        if (tokenAmount.isZero()) {
             throw new Revert('You have no tokens to remove.');
         }
+        TransferHelper.safeTransfer(this.token, Blockchain.tx.sender, tokenAmount);
 
+        // 4. Decrease total reserves
+        this.updateTotalReserve(this.tokenId, tokenAmount, false);
+        provider.liquidityProvided = u256.Zero;
+
+        // 5. Also reduce the virtual reserves so the ratio is consistent
+        //    but do NOT update deltaTokensSell or deltaTokensBuy.
+        this.virtualTokenReserve = SafeMath.sub(this.virtualTokenReserve, tokenAmount);
+        this.virtualBTCReserve = SafeMath.sub(this.virtualBTCReserve, btcOwed);
+
+        // 6. Finally, queue them up to receive owed BTC from future inflows
         provider.pendingRemoval = true;
-
-        // 4. For the owed BTC portion, queue them in the special "removal queue."
-        //    This ensures that future BTC inflows pay them first.
         this._removalQueue.push(providerId);
 
-        // 5. Done
         Blockchain.emit(new LiquidityRemovedEvent(providerId, btcOwed, tokenAmount));
     }
 
@@ -983,12 +978,6 @@ export class LiquidityQueue {
         const ev = new SwapExecutedEvent(buyer, totalSatoshisSpent, totalTokensPurchased);
         Blockchain.emit(ev);
     }
-
-    /*public sellTokens(tokensIn: u256, satoshisOut: u256): void {
-        // accumulate
-        this.deltaBTCSell = SafeMath.add(this.deltaBTCSell, satoshisOut);
-        this.deltaTokensSell = SafeMath.add(this.deltaTokensSell, tokensIn);
-    }*/
 
     public buyTokens(tokensOut: u256, satoshisIn: u256): void {
         // accumulate
