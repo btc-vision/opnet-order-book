@@ -51,12 +51,14 @@ import { FeeManager } from './FeeManager';
 import { LiquidityAddedEvent } from '../events/LiquidityAddedEvent';
 import { CompletedTrade } from './CompletedTrade';
 import { LiquidityRemovedEvent } from '../events/LiquidityRemovedEvent';
+import { DynamicFee } from './DynamicFee';
 
 const ENABLE_TIMEOUT: bool = false;
 
 export class LiquidityQueue {
     // Reservation settings
     public static RESERVATION_EXPIRE_AFTER: u64 = 5;
+    public static VOLATILITY_WINDOW_BLOCKS: u64 = 5;
     public static STRICT_MINIMUM_PROVIDER_RESERVATION_AMOUNT: u256 = u256.fromU32(600);
 
     public static MINIMUM_PROVIDER_RESERVATION_AMOUNT: u256 = u256.fromU32(1000);
@@ -107,12 +109,16 @@ export class LiquidityQueue {
 
     private consumedOutputsFromUTXOs: Map<string, u64> = new Map<string, u64>();
 
+    private readonly _dynamicFee: DynamicFee;
+
     constructor(
         public readonly token: Address,
         public readonly tokenIdUint8Array: Uint8Array,
     ) {
         const tokenId = u256.fromBytes(token, true);
         this.tokenId = tokenId;
+
+        this._dynamicFee = new DynamicFee(tokenId);
 
         this._queue = new StoredU256Array(LIQUIDITY_QUEUE_POINTER, tokenIdUint8Array, u256.Zero);
         this._priorityQueue = new StoredU256Array(
@@ -443,19 +449,19 @@ export class LiquidityQueue {
         let satSpent: u256 = u256.Zero;
         let lastId: u64 = 0;
 
-        let i: u32 = 0;
+        //let i: u32 = 0;
         while (!tokensRemaining.isZero()) {
-            i++;
+            //i++;
 
             // 1) We call getNextProviderWithLiquidity(), which may return a removal-queue provider
             //    or a normal/priority-queue provider.
             const provider = this.getNextProviderWithLiquidity();
             if (provider === null) {
-                if (i === 1) {
+                /*if (i === 1) {
                     throw new Revert(
                         `Impossible state: no providers even though totalAvailableLiquidity > 0`,
                     );
-                }
+                }*/
                 break;
             }
 
@@ -950,29 +956,38 @@ export class LiquidityQueue {
             throw new Revert('Reserved for LP; cannot swap');
         }
 
-        // Execute the trade
         const trade = this.executeTrade(reservation);
-        const totalTokensPurchased = SafeMath.add(
+        let totalTokensPurchased = SafeMath.add(
             trade.totalTokensPurchased,
             trade.totalTokensRefunded,
         );
 
         const totalSatoshisSpent = SafeMath.add(trade.totalSatoshisSpent, trade.totalRefundedBTC);
 
-        // transfer tokens to buyer
+        // 1) get utilization ratio
+        const utilizationRatio = this.getUtilizationRatio();
+
+        // 2) compute dynamic fee in basis points
+        const feeBP = this._dynamicFee.getDynamicFeeBP(totalSatoshisSpent, utilizationRatio);
+
+        // 3) compute actual token fee
+        const totalFeeTokens = this._dynamicFee.computeFeeAmount(totalTokensPurchased, feeBP);
+
+        // 4) subtract from user's purchased tokens
+        totalTokensPurchased = SafeMath.sub(totalTokensPurchased, totalFeeTokens);
+
+        this.distributeFee(totalFeeTokens);
+
+        // 5) transfer net tokens to buyer
         TransferHelper.safeTransfer(this.token, buyer, totalTokensPurchased);
 
-        // update total reserves
+        // 6) update totalReserved/accumulators
         this.updateTotalReserved(this.tokenId, totalTokensPurchased, false);
         this.updateTotalReserve(this.tokenId, totalTokensPurchased, false);
-
-        // update accumulators
         this.buyTokens(totalTokensPurchased, totalSatoshisSpent);
 
-        // end of swap => remove reservation
+        // finalize
         reservation.delete();
-
-        // cleanup
         this.cleanUpQueues();
 
         const ev = new SwapExecutedEvent(buyer, totalSatoshisSpent, totalTokensPurchased);
@@ -1059,7 +1074,24 @@ export class LiquidityQueue {
         this.deltaTokensBuy = u256.Zero;
         this.deltaTokensSell = u256.Zero;
 
+        // Compute volatility
+        this._dynamicFee.volatility = this.computeVolatility(
+            currentBlock,
+            LiquidityQueue.VOLATILITY_WINDOW_BLOCKS,
+        );
+
         this.lastVirtualUpdateBlock = currentBlock;
+    }
+
+    private getUtilizationRatio(): u256 {
+        const reserved = this.reservedLiquidity;
+        const total = this.liquidity;
+
+        if (total.isZero()) {
+            return u256.Zero;
+        }
+
+        return SafeMath.div(SafeMath.mul(reserved, u256.fromU64(100)), total);
     }
 
     private getProviderIfFromQueue(providerIndex: u64, type: u8): u256 {
@@ -1657,6 +1689,45 @@ export class LiquidityQueue {
             ? SafeMath.add(currentReserved, amount)
             : SafeMath.sub(currentReserved, amount);
         this._totalReserved.set(token, newReserved);
+    }
+
+    private computeVolatility(
+        currentBlock: u64,
+        windowSize: u32 = LiquidityQueue.VOLATILITY_WINDOW_BLOCKS,
+    ): u256 {
+        // current quote
+        const currentQuote = this._quoteHistory.get(<u32>currentBlock);
+
+        // older quote from (currentBlock - windowSize)
+        const oldQuote = this._quoteHistory.get(<u32>(currentBlock - windowSize));
+
+        if (oldQuote.isZero()) {
+            // fallback if no data
+            return u256.Zero;
+        }
+
+        // WE WANT UNDERFLOW HERE.
+        let diff = u256.sub(currentQuote, oldQuote);
+        if (diff.toI64() < 0) {
+            diff = SafeMath.mul(diff, u256.fromI64(-1));
+        }
+
+        Blockchain.log(
+            `diff: ${diff.toString()}, oldQuote: ${oldQuote.toString()}, currentQuote: ${currentQuote.toString()}`,
+        );
+
+        // ratio = (|current - old| / old) * 10000 (for basis point)
+        return SafeMath.div(SafeMath.mul(diff, u256.fromU64(10000)), oldQuote);
+    }
+
+    private distributeFee(totalFee: u256): void {
+        //const feeLP = SafeMath.div(SafeMath.mul(totalFee, u256.fromU64(80)), u256.fromU64(100));
+        //const feeMoto = SafeMath.sub(totalFee, feeLP);
+
+        this.updateTotalReserve(this.tokenId, totalFee, true);
+
+        // TODO: Handle Motoswap
+        //TransferHelper.safeTransfer(this.token, MOTOSWAP, feeProtocol);
     }
 
     private removePendingLiquidityProviderFromRemovalQueue(provider: Provider, i: u64): void {

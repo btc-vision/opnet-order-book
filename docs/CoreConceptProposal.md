@@ -269,6 +269,17 @@ When the liquidity provider wants to exit and redeem their share of the pool:
     - Providers might avoid some typical impermanent loss by tracking the token vs. "virtual BTC" valuations. There is,
       of course, still the risk that if no one swaps in with BTC, you might wait a long time to get your BTC out.
 
+5. **To summarize**
+    - We simply **reduce** the LP's "virtual" stake in the pool.
+    - The token portion (the side the contract actually holds) is **immediately** returned to the LP.
+    - The BTC portion cannot be given instantly (the contract doesn't hold real BTC). So the user's "BTC owed is put
+      into a *removal queue.*
+    - As future swaps bring BTC, the system pays out that queued BTC to the removing LP.
+    - Crucially, we do not treat removal as a "sell" in the buy/sell deltas. Instead, we **directly subtracts** from the
+      internal virtualBTCReserve and virtualTokenReserve without incrementing deltaTokensSell. This keeps the
+      swap-volume
+      metrics clean and avoids artificially inflating "sell" volume.
+
 #### How "Virtual BTC" Works Behind the Scenes for LP providers
 
 - **Ledger Tracking**: The contract basically keeps a record:

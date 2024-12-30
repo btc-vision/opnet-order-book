@@ -251,26 +251,22 @@ export class NativeSwap extends OP_NET {
     ): BytesWriter {
         // Validate
         if (token.empty() || token.equals(Blockchain.DEAD_ADDRESS)) {
-            throw new Revert('ORDER_BOOK: Invalid token address');
+            throw new Revert('NATIVE_SWAP: Invalid token address');
         }
 
         if (maximumAmountIn.isZero()) {
-            throw new Revert('ORDER_BOOK: Maximum amount in cannot be zero');
+            throw new Revert('NATIVE_SWAP: Maximum amount in cannot be zero');
         }
 
         if (u256.lt(maximumAmountIn, this.minimumTradeSize)) {
             throw new Revert(
-                `ORDER_BOOK: Requested amount is below minimum trade size ${maximumAmountIn} < ${this.minimumTradeSize}`,
+                `NATIVE_SWAP: Requested amount is below minimum trade size ${maximumAmountIn} < ${this.minimumTradeSize}`,
             );
-        }
-
-        if (minimumAmountOut.isZero()) {
-            throw new Revert('ORDER_BOOK: Minimum amount out cannot be zero');
         }
 
         const totalFee = getTotalFeeCollected();
         if (totalFee < FeeManager.RESERVATION_BASE_FEE) {
-            throw new Revert('ORDER_BOOK: Insufficient fees collected');
+            throw new Revert('NATIVE_SWAP: Insufficient fees collected');
         }
 
         const buyer: Address = Blockchain.tx.sender;
