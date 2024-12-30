@@ -54,6 +54,7 @@ import { LiquidityRemovedEvent } from '../events/LiquidityRemovedEvent';
 import { DynamicFee } from './DynamicFee';
 
 const ENABLE_TIMEOUT: bool = false;
+const ENABLE_FEES: bool = false;
 
 export class LiquidityQueue {
     // Reservation settings
@@ -963,27 +964,21 @@ export class LiquidityQueue {
         );
 
         const totalSatoshisSpent = SafeMath.add(trade.totalSatoshisSpent, trade.totalRefundedBTC);
+        if (ENABLE_FEES) {
+            const utilizationRatio = this.getUtilizationRatio();
+            const feeBP = this._dynamicFee.getDynamicFeeBP(totalSatoshisSpent, utilizationRatio);
+            const totalFeeTokens = this._dynamicFee.computeFeeAmount(totalTokensPurchased, feeBP);
 
-        // 1) get utilization ratio
-        const utilizationRatio = this.getUtilizationRatio();
+            totalTokensPurchased = SafeMath.sub(totalTokensPurchased, totalFeeTokens);
 
-        // 2) compute dynamic fee in basis points
-        const feeBP = this._dynamicFee.getDynamicFeeBP(totalSatoshisSpent, utilizationRatio);
+            this.distributeFee(totalFeeTokens);
+        }
 
-        // 3) compute actual token fee
-        const totalFeeTokens = this._dynamicFee.computeFeeAmount(totalTokensPurchased, feeBP);
-
-        // 4) subtract from user's purchased tokens
-        totalTokensPurchased = SafeMath.sub(totalTokensPurchased, totalFeeTokens);
-
-        this.distributeFee(totalFeeTokens);
-
-        // 5) transfer net tokens to buyer
         TransferHelper.safeTransfer(this.token, buyer, totalTokensPurchased);
 
-        // 6) update totalReserved/accumulators
         this.updateTotalReserved(this.tokenId, totalTokensPurchased, false);
         this.updateTotalReserve(this.tokenId, totalTokensPurchased, false);
+
         this.buyTokens(totalTokensPurchased, totalSatoshisSpent);
 
         // finalize
@@ -1721,13 +1716,13 @@ export class LiquidityQueue {
     }
 
     private distributeFee(totalFee: u256): void {
-        //const feeLP = SafeMath.div(SafeMath.mul(totalFee, u256.fromU64(80)), u256.fromU64(100));
-        //const feeMoto = SafeMath.sub(totalFee, feeLP);
+        this.virtualTokenReserve = SafeMath.add(this.virtualTokenReserve, totalFee);
 
-        this.updateTotalReserve(this.tokenId, totalFee, true);
-
-        // TODO: Handle Motoswap
-        //TransferHelper.safeTransfer(this.token, MOTOSWAP, feeProtocol);
+        // If you want an 80/20 split:
+        // const feeLP = SafeMath.div(SafeMath.mul(totalFee, u256.fromU64(80)), u256.fromU64(100));
+        // const feeMoto = SafeMath.sub(totalFee, feeLP);
+        // this.virtualTokenReserve = SafeMath.add(this.virtualTokenReserve, feeLP);
+        // TransferHelper.safeTransfer(this.token, MOTOSWAP, feeMoto);
     }
 
     private removePendingLiquidityProviderFromRemovalQueue(provider: Provider, i: u64): void {
