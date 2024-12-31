@@ -41,7 +41,7 @@ import {
 import { StoredMapU256 } from '../stored/StoredMapU256';
 import { getProvider, Provider } from './Provider';
 import { LiquidityListedEvent } from '../events/LiquidityListedEvent';
-import { LiquidityReserved } from '../events/LiquidityReserved';
+import { LiquidityReservedEvent } from '../events/LiquidityReservedEvent';
 import { LIQUIDITY_REMOVAL_TYPE, NORMAL_TYPE, PRIORITY_TYPE, Reservation } from './Reservation';
 import { MAX_RESERVATION_AMOUNT_PROVIDER } from '../data-types/UserLiquidity';
 import { ReservationCreatedEvent } from '../events/ReservationCreatedEvent';
@@ -59,7 +59,7 @@ const ENABLE_FEES: bool = false;
 export class LiquidityQueue {
     // Reservation settings
     public static RESERVATION_EXPIRE_AFTER: u64 = 5;
-    public static VOLATILITY_WINDOW_BLOCKS: u64 = 5;
+    public static VOLATILITY_WINDOW_BLOCKS: u32 = 5;
     public static STRICT_MINIMUM_PROVIDER_RESERVATION_AMOUNT: u256 = u256.fromU32(600);
 
     public static MINIMUM_PROVIDER_RESERVATION_AMOUNT: u256 = u256.fromU32(1000);
@@ -532,7 +532,7 @@ export class LiquidityQueue {
                     LIQUIDITY_REMOVAL_TYPE,
                 );
 
-                const ev = new LiquidityReserved(provider.btcReceiver, satWouldSpend.toU128());
+                const ev = new LiquidityReservedEvent(provider.btcReceiver, satWouldSpend.toU128());
                 Blockchain.emit(ev);
             } else {
                 // CASE B: NORMAL / PRIORITY PROVIDER
@@ -595,7 +595,7 @@ export class LiquidityQueue {
                     provider.isPriority() ? PRIORITY_TYPE : NORMAL_TYPE,
                 );
 
-                const ev = new LiquidityReserved(provider.btcReceiver, costInSatoshis.toU128());
+                const ev = new LiquidityReservedEvent(provider.btcReceiver, costInSatoshis.toU128());
                 Blockchain.emit(ev);
             }
         }

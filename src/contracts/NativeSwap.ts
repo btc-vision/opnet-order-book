@@ -1,6 +1,7 @@
 import {
     Address,
     ADDRESS_BYTE_LENGTH,
+    U64_BYTE_LENGTH,
     Blockchain,
     BytesWriter,
     Calldata,
@@ -75,20 +76,35 @@ export class NativeSwap extends OP_NET {
             case encodeSelector('getEWMA'):
                 return this.getVirtualReserves(calldata);
 
-            case encodeSelector('priorityQueueCost'):
+            case encodeSelector('getPriorityQueueCost'):
                 return this.getPriorityQueueCost(calldata);
-
+            case encodeSelector('getFees'):
+                return this.getFees(calldata);
             default:
                 return super.execute(method, calldata);
         }
     }
 
+    private getFees(calldata: Calldata): BytesWriter {
+        const writer = new BytesWriter(3 * U64_BYTE_LENGTH);
+
+        writer.writeU64(FeeManager.RESERVATION_BASE_FEE);
+        writer.writeU64(FeeManager.PRIORITY_QUEUE_BASE_FEE);
+        writer.writeU64(FeeManager.PRICE_PER_USER_IN_PRIORITY_QUEUE_BTC);
+
+        return writer;
+    }
+
     private setFees(calldata: Calldata): BytesWriter {
+        this.onlyDeployer(Blockchain.tx.sender);
+
         FeeManager.RESERVATION_BASE_FEE = calldata.readU64();
         FeeManager.PRIORITY_QUEUE_BASE_FEE = calldata.readU64();
         FeeManager.PRICE_PER_USER_IN_PRIORITY_QUEUE_BTC = calldata.readU64();
 
-        return new BytesWriter(1);
+        const result = new BytesWriter(1);
+        result.writeBoolean(true);
+        return result;
     }
 
     private getProviderDetails(calldata: Calldata): BytesWriter {
