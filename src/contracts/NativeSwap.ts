@@ -230,6 +230,7 @@ export class NativeSwap extends OP_NET {
         if (token.empty() || token.equals(Blockchain.DEAD_ADDRESS)) {
             throw new Revert('Invalid token address');
         }
+
         if (amountIn.isZero()) {
             throw new Revert('Amount in cannot be zero');
         }

@@ -655,7 +655,6 @@ export class LiquidityQueue {
         ); // T
 
         const btcSpent = SafeMath.add(trade.totalSatoshisSpent, trade.totalRefundedBTC); // B
-
         if (tokensBoughtFromQueue.isZero() || btcSpent.isZero()) {
             throw new Revert('No effective purchase made. Check your BTC outputs.');
         }
