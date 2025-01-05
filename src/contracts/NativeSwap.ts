@@ -173,7 +173,11 @@ export class NativeSwap extends OP_NET {
     }
 
     private createPoolWithSignature(calldata: Calldata): BytesWriter {
-        const signature = calldata.readBytes(64);
+        const signature = calldata.readBytesWithLength();
+        if (signature.length !== 64) {
+            throw new Revert('NATIVE_SWAP: Invalid signature length');
+        }
+
         const amount = calldata.readU256();
         const token: Address = calldata.readAddress();
 
