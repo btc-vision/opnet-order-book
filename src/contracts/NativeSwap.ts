@@ -164,9 +164,9 @@ export class NativeSwap extends OP_NET {
 
     private createPool(calldata: Calldata): BytesWriter {
         const token: Address = calldata.readAddress();
-        const tokenOwner = this.getOwner(token);
+        const tokenOwner = this.getDeployer(token);
 
-        this.ensureTokenOwner(tokenOwner);
+        this.ensureContractDeployer(tokenOwner);
 
         const floorPrice: u256 = calldata.readU256();
         const initialLiquidity: u128 = calldata.readU128();
@@ -414,7 +414,7 @@ export class NativeSwap extends OP_NET {
         return ripemd160(address);
     }
 
-    private getOwner(token: Address): Address {
+    private getDeployer(token: Address): Address {
         const calldata = new BytesWriter(4);
         calldata.writeSelector(NativeSwap.DEPLOYER_SELECTOR);
 
@@ -449,7 +449,7 @@ export class NativeSwap extends OP_NET {
         }
     }
 
-    private ensureTokenOwner(tokenOwner: Address): void {
+    private ensureContractDeployer(tokenOwner: Address): void {
         if (Blockchain.tx.origin.equals(tokenOwner) == false) {
             throw new Revert('NATIVE_SWAP: Only token owner can set quote');
         }
