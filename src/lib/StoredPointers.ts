@@ -38,3 +38,4 @@ export const LP_BTC_OWED_RESERVED_POINTER: u16 = Blockchain.nextPointer;
 
 export const REMOVAL_QUEUE_POINTER: u16 = Blockchain.nextPointer;
 export const VOLATILITY_POINTER: u16 = Blockchain.nextPointer;
+export const STARTING_INDEX_POINTER: u16 = Blockchain.nextPointer;

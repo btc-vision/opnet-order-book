@@ -10,7 +10,6 @@ export class AdvancedStoredString {
 
     private _value: string = '';
 
-    @inline
     public get value(): string {
         if (!this._value) {
             this.load();
@@ -19,7 +18,6 @@ export class AdvancedStoredString {
         return this._value || '';
     }
 
-    @inline
     public set value(value: string) {
         this._value = value;
         this.save();

@@ -8,6 +8,6 @@ export class LiquidityReservedEvent extends NetEvent {
         data.writeStringWithLength(depositAddress);
         data.writeU128(amount);
 
-        super('LiquidityReservedEvent', data);
+        super('LiquidityReserved', data);
     }
 }

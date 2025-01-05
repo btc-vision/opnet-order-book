@@ -1,7 +1,6 @@
 import {
     Address,
     ADDRESS_BYTE_LENGTH,
-    U64_BYTE_LENGTH,
     Blockchain,
     BytesWriter,
     Calldata,
@@ -9,14 +8,22 @@ import {
     Revert,
     SafeMath,
     Selector,
+    U64_BYTE_LENGTH,
 } from '@btc-vision/btc-runtime/runtime';
 import { OP_NET } from '@btc-vision/btc-runtime/runtime/contracts/OP_NET';
 import { u128, u256 } from '@btc-vision/as-bignum/assembly';
-import { LiquidityQueue } from '../lib/LiquidityQueue';
+import { LiquidityQueue } from '../lib/Liquidity/LiquidityQueue';
 import { ripemd160, sha256 } from '@btc-vision/btc-runtime/runtime/env/global';
 import { getProvider, saveAllProviders } from '../lib/Provider';
 import { getTotalFeeCollected } from '../utils/OrderBookUtils';
 import { FeeManager } from '../lib/FeeManager';
+import { AddLiquidityOperation } from '../lib/Liquidity/operations/AddLiquidityOperation';
+import { RemoveLiquidityOperation } from '../lib/Liquidity/operations/RemoveLiquidityOperation';
+import { CreatePoolOperation } from '../lib/Liquidity/operations/CreatePoolOperation';
+import { ListTokensForSaleOperation } from '../lib/Liquidity/operations/ListTokensForSaleOperation';
+import { ReserveLiquidityOperation } from '../lib/Liquidity/operations/ReserveLiquidityOperation';
+import { CancelListingOperation } from '../lib/Liquidity/operations/CancelListingOperation';
+import { SwapOperation } from '../lib/Liquidity/operations/SwapOperation';
 
 /**
  * OrderBook contract for the OP_NET order book system,
@@ -70,12 +77,6 @@ export class NativeSwap extends OP_NET {
                 return this.getQuote(calldata);
             case encodeSelector('getProviderDetails'):
                 return this.getProviderDetails(calldata);
-
-            // If you still want a 'getEWMA'-like function,
-            // we can repurpose it to return virtual reserves:
-            case encodeSelector('getEWMA'):
-                return this.getVirtualReserves(calldata);
-
             case encodeSelector('getPriorityQueueCost'):
                 return this.getPriorityQueueCost(calldata);
             case encodeSelector('getFees'):
@@ -85,7 +86,7 @@ export class NativeSwap extends OP_NET {
         }
     }
 
-    private getFees(calldata: Calldata): BytesWriter {
+    private getFees(_calldata: Calldata): BytesWriter {
         const writer = new BytesWriter(3 * U64_BYTE_LENGTH);
 
         writer.writeU64(FeeManager.RESERVATION_BASE_FEE);
@@ -134,9 +135,10 @@ export class NativeSwap extends OP_NET {
         const token = calldata.readAddress();
         const receiver = calldata.readStringWithLength();
         const providerId = this.addressToPointerU256(Blockchain.tx.sender, token);
-
         const queue = this.getLiquidityQueue(token, this.addressToPointer(token));
-        queue.addLiquidity(providerId, receiver);
+        const operation = new AddLiquidityOperation(queue, providerId, receiver);
+
+        operation.execute();
         queue.save();
 
         const result = new BytesWriter(1);
@@ -146,10 +148,13 @@ export class NativeSwap extends OP_NET {
 
     private removeLiquidity(calldata: Calldata): BytesWriter {
         const token = calldata.readAddress();
+        const amount = calldata.readU256();
         const providerId = this.addressToPointerU256(Blockchain.tx.sender, token);
-
         const queue = this.getLiquidityQueue(token, this.addressToPointer(token));
-        queue.removeLiquidity(providerId);
+
+        const operation = new RemoveLiquidityOperation(queue, providerId, amount);
+        operation.execute();
+
         queue.save();
 
         const result = new BytesWriter(1);
@@ -160,9 +165,8 @@ export class NativeSwap extends OP_NET {
     private createPool(calldata: Calldata): BytesWriter {
         const token: Address = calldata.readAddress();
         const tokenOwner = this.getOwner(token);
-        if (Blockchain.tx.origin.equals(tokenOwner) == false) {
-            throw new Revert('Only token owner can set quote');
-        }
+
+        this.ensureTokenOwner(tokenOwner);
 
         const floorPrice: u256 = calldata.readU256();
         const initialLiquidity: u128 = calldata.readU128();
@@ -171,18 +175,10 @@ export class NativeSwap extends OP_NET {
         const antiBotMaximumTokensPerReservation: u256 = calldata.readU256();
         const maxReservesIn5BlocksPercent: u16 = calldata.readU16();
 
-        if (Blockchain.validateBitcoinAddress(receiver) == false) {
-            throw new Revert('Invalid receiver address');
-        }
-        if (floorPrice.isZero()) {
-            throw new Revert('Floor price cannot be zero');
-        }
-        if (initialLiquidity.isZero()) {
-            throw new Revert('Initial liquidity cannot be zero');
-        }
-        if (antiBotEnabledFor !== 0 && antiBotMaximumTokensPerReservation.isZero()) {
-            throw new Revert('Anti-bot max tokens per reservation cannot be zero');
-        }
+        this.ensureValidReceiverAddress(receiver);
+        this.ensureFloorPriceNotZero(floorPrice);
+        this.ensureInitialLiquidityNotZero(initialLiquidity);
+        this.ensureAntibotSettingsValid(antiBotEnabledFor, antiBotMaximumTokensPerReservation);
 
         const queue = this.getLiquidityQueue(token, this.addressToPointer(token));
         if (!queue.p0.isZero()) {
@@ -190,7 +186,8 @@ export class NativeSwap extends OP_NET {
         }
 
         const providerId = this.addressToPointerU256(Blockchain.tx.sender, token);
-        queue.createPool(
+        const operation = new CreatePoolOperation(
+            queue,
             floorPrice,
             providerId,
             initialLiquidity,
@@ -200,21 +197,19 @@ export class NativeSwap extends OP_NET {
             maxReservesIn5BlocksPercent,
         );
 
+        operation.execute();
+        queue.save();
+
         const writer = new BytesWriter(1);
         writer.writeBoolean(true);
         return writer;
     }
 
-    //=================================================
-    // ADD LIQUIDITY
-    //=================================================
     private listLiquidity(calldata: Calldata): BytesWriter {
         const token: Address = calldata.readAddress();
         const receiver: string = calldata.readStringWithLength();
 
-        if (Blockchain.validateBitcoinAddress(receiver) == false) {
-            throw new Revert('Invalid receiver address');
-        }
+        this.ensureValidReceiverAddress(receiver);
 
         const amountIn: u128 = calldata.readU128();
         const priority: boolean = calldata.readBoolean();
@@ -227,19 +222,23 @@ export class NativeSwap extends OP_NET {
         amountIn: u128,
         priority: boolean,
     ): BytesWriter {
-        if (token.empty() || token.equals(Blockchain.DEAD_ADDRESS)) {
-            throw new Revert('Invalid token address');
-        }
-
-        if (amountIn.isZero()) {
-            throw new Revert('Amount in cannot be zero');
-        }
+        this.ensureValidTokenAddress(token);
+        this.ensureAmountInNotZero(amountIn);
 
         const providerId = this.addressToPointerU256(Blockchain.tx.sender, token);
         const tokenId = this.addressToPointer(token);
 
         const queue = this.getLiquidityQueue(token, tokenId);
-        queue.listTokensForSale(providerId, amountIn, receiver, priority);
+        const operation = new ListTokensForSaleOperation(
+            queue,
+            providerId,
+            amountIn,
+            receiver,
+            priority,
+        );
+
+        operation.execute();
+
         queue.save();
 
         // Return success
@@ -248,9 +247,6 @@ export class NativeSwap extends OP_NET {
         return result;
     }
 
-    //=================================================
-    // RESERVE
-    //=================================================
     private reserve(calldata: Calldata): BytesWriter {
         const token: Address = calldata.readAddress();
         const maximumAmountIn: u256 = calldata.readU256();
@@ -266,77 +262,25 @@ export class NativeSwap extends OP_NET {
         minimumAmountOut: u256,
         forLP: bool,
     ): BytesWriter {
-        // Validate
-        if (token.empty() || token.equals(Blockchain.DEAD_ADDRESS)) {
-            throw new Revert('NATIVE_SWAP: Invalid token address');
-        }
-
-        if (maximumAmountIn.isZero()) {
-            throw new Revert('NATIVE_SWAP: Maximum amount in cannot be zero');
-        }
-
-        if (u256.lt(maximumAmountIn, this.minimumTradeSize)) {
-            throw new Revert(
-                `NATIVE_SWAP: Requested amount is below minimum trade size ${maximumAmountIn} < ${this.minimumTradeSize}`,
-            );
-        }
+        this.ensureValidTokenAddress(token);
+        this.ensureMaximumAmountInNotZero(maximumAmountIn);
+        this.ensureMaximumAmountInNotBelowTradeSize(maximumAmountIn);
 
         const totalFee = getTotalFeeCollected();
-        if (totalFee < FeeManager.RESERVATION_BASE_FEE) {
-            throw new Revert('NATIVE_SWAP: Insufficient fees collected');
-        }
+        this.ensureSufficientFeesCollected(totalFee);
 
         const buyer: Address = Blockchain.tx.sender;
         const queue = this.getLiquidityQueue(token, this.addressToPointer(token));
-        const reserved = queue.reserveLiquidity(buyer, maximumAmountIn, minimumAmountOut, forLP);
-        queue.save();
+        const operation = new ReserveLiquidityOperation(
+            queue,
+            buyer,
+            maximumAmountIn,
+            minimumAmountOut,
+            forLP,
+        );
 
-        const result = new BytesWriter(32);
-        result.writeU256(reserved);
-        return result;
-    }
+        operation.execute();
 
-    //=================================================
-    // REMOVE LIQUIDITY
-    //=================================================
-    private cancelListing(calldata: Calldata): BytesWriter {
-        const token: Address = calldata.readAddress();
-        return this._cancelListing(token);
-    }
-
-    private _cancelListing(token: Address): BytesWriter {
-        if (token.empty() || token.equals(Blockchain.DEAD_ADDRESS)) {
-            throw new Revert('Invalid token address');
-        }
-
-        const providerId = this.addressToPointerU256(Blockchain.tx.sender, token);
-        const tokenId = this.addressToPointer(token);
-
-        const queue = this.getLiquidityQueue(token, tokenId);
-        const totalTokensReturned = queue.cancelListing(providerId);
-        queue.save();
-
-        // Serialize the total tokens returned
-        const result = new BytesWriter(32);
-        result.writeU128(totalTokensReturned);
-        return result;
-    }
-
-    //=================================================
-    // SWAP
-    //=================================================
-    private swap(calldata: Calldata): BytesWriter {
-        const token: Address = calldata.readAddress();
-        return this._swap(token);
-    }
-
-    private _swap(token: Address): BytesWriter {
-        if (token.empty() || token.equals(Blockchain.DEAD_ADDRESS)) {
-            throw new Revert('Invalid token address');
-        }
-
-        const queue: LiquidityQueue = this.getLiquidityQueue(token, this.addressToPointer(token));
-        queue.swap();
         queue.save();
 
         const result = new BytesWriter(1);
@@ -344,18 +288,56 @@ export class NativeSwap extends OP_NET {
         return result;
     }
 
-    //=================================================
-    // GET RESERVE (liquidity + reservedLiquidity)
-    //=================================================
+    private cancelListing(calldata: Calldata): BytesWriter {
+        const token: Address = calldata.readAddress();
+        return this._cancelListing(token);
+    }
+
+    private _cancelListing(token: Address): BytesWriter {
+        this.ensureValidTokenAddress(token);
+
+        const providerId = this.addressToPointerU256(Blockchain.tx.sender, token);
+        const tokenId = this.addressToPointer(token);
+
+        const queue = this.getLiquidityQueue(token, tokenId);
+
+        const operation = new CancelListingOperation(queue, providerId);
+        operation.execute();
+
+        queue.save();
+
+        const result = new BytesWriter(1);
+        result.writeBoolean(true);
+        return result;
+    }
+
+    private swap(calldata: Calldata): BytesWriter {
+        const token: Address = calldata.readAddress();
+        return this._swap(token);
+    }
+
+    private _swap(token: Address): BytesWriter {
+        this.ensureValidTokenAddress(token);
+
+        const queue: LiquidityQueue = this.getLiquidityQueue(token, this.addressToPointer(token));
+
+        const operation = new SwapOperation(queue);
+        operation.execute();
+
+        queue.save();
+
+        const result = new BytesWriter(1);
+        result.writeBoolean(true);
+        return result;
+    }
+
     private getReserve(calldata: Calldata): BytesWriter {
         const token: Address = calldata.readAddress();
         return this._getReserve(token);
     }
 
     private _getReserve(token: Address): BytesWriter {
-        if (token.empty() || token.equals(Blockchain.DEAD_ADDRESS)) {
-            throw new Revert('Invalid token address');
-        }
+        this.ensureValidTokenAddress(token);
 
         const queue = this.getLiquidityQueue(token, this.addressToPointer(token));
 
@@ -367,9 +349,6 @@ export class NativeSwap extends OP_NET {
         return result;
     }
 
-    //=================================================
-    // GET QUOTE (Uses the new virtual-constant-product approach)
-    //=================================================
     private getQuote(calldata: Calldata): BytesWriter {
         const token: Address = calldata.readAddress();
         const satoshisIn: u256 = calldata.readU256();
@@ -387,22 +366,13 @@ export class NativeSwap extends OP_NET {
      *   4) requiredSatoshis = min( satoshisIn, (tokensOut * SHIFT) / price )
      */
     private _getQuote(token: Address, satoshisIn: u256): BytesWriter {
-        if (token.empty() || token.equals(Blockchain.DEAD_ADDRESS)) {
-            throw new Revert('Invalid token address');
-        }
-        if (u256.lt(satoshisIn, this.minimumTradeSize)) {
-            throw new Revert(
-                `Requested amount is below minimum trade size ${satoshisIn} < ${this.minimumTradeSize}`,
-            );
-        }
+        this.ensureValidTokenAddress(token);
+        this.ensureMaximumAmountInNotZero(satoshisIn);
 
         const queue: LiquidityQueue = this.getLiquidityQueue(token, this.addressToPointer(token));
-        queue.updateVirtualPoolIfNeeded();
 
         const price: u256 = queue.quote();
-        if (price.isZero()) {
-            throw new Revert('Price is zero or no liquidity');
-        }
+        this.ensurePriceNotZeroAndLiquidity(price);
 
         let tokensOut = SafeMath.mul(satoshisIn, price);
 
@@ -429,24 +399,6 @@ export class NativeSwap extends OP_NET {
         return result;
     }
 
-    //=================================================
-    // (Optional) GET "EWMA" REPLACEMENT -
-    // Now returning the Virtual Reserves
-    //=================================================
-    private getVirtualReserves(calldata: Calldata): BytesWriter {
-        const token: Address = calldata.readAddress();
-        const queue = this.getLiquidityQueue(token, this.addressToPointer(token));
-
-        // We will return: (virtualBTCReserve, virtualTokenReserve)
-        const writer = new BytesWriter(64);
-        writer.writeU256(queue.virtualBTCReserve);
-        writer.writeU256(queue.virtualTokenReserve);
-        return writer;
-    }
-
-    //=================================================
-    // HELPERS
-    //=================================================
     private getLiquidityQueue(token: Address, tokenId: Uint8Array): LiquidityQueue {
         return new LiquidityQueue(token, tokenId);
     }
@@ -468,5 +420,76 @@ export class NativeSwap extends OP_NET {
 
         const response = Blockchain.call(token, calldata);
         return response.readAddress();
+    }
+
+    private ensureAntibotSettingsValid(
+        antiBotEnabledFor: u16,
+        antiBotMaximumTokensPerReservation: u256,
+    ): void {
+        if (antiBotEnabledFor !== 0 && antiBotMaximumTokensPerReservation.isZero()) {
+            throw new Revert('NATIVE_SWAP: Anti-bot max tokens per reservation cannot be zero');
+        }
+    }
+
+    private ensureInitialLiquidityNotZero(initialLiquidity: u128): void {
+        if (initialLiquidity.isZero()) {
+            throw new Revert('NATIVE_SWAP: Initial liquidity cannot be zero');
+        }
+    }
+
+    private ensureFloorPriceNotZero(floorPrice: u256): void {
+        if (floorPrice.isZero()) {
+            throw new Revert('NATIVE_SWAP: Floor price cannot be zero');
+        }
+    }
+
+    private ensureValidReceiverAddress(receiver: string): void {
+        if (Blockchain.validateBitcoinAddress(receiver) == false) {
+            throw new Revert('NATIVE_SWAP: Invalid receiver address');
+        }
+    }
+
+    private ensureTokenOwner(tokenOwner: Address): void {
+        if (Blockchain.tx.origin.equals(tokenOwner) == false) {
+            throw new Revert('NATIVE_SWAP: Only token owner can set quote');
+        }
+    }
+
+    private ensureValidTokenAddress(token: Address): void {
+        if (token.empty() || token.equals(Blockchain.DEAD_ADDRESS)) {
+            throw new Revert('NATIVE_SWAP: Invalid token address');
+        }
+    }
+
+    private ensureAmountInNotZero(amountIn: u128): void {
+        if (amountIn.isZero()) {
+            throw new Revert('NATIVE_SWAP: Amount in cannot be zero');
+        }
+    }
+
+    private ensureSufficientFeesCollected(totalFee: u64): void {
+        if (totalFee < FeeManager.RESERVATION_BASE_FEE) {
+            throw new Revert('NATIVE_SWAP: Insufficient fees collected');
+        }
+    }
+
+    private ensureMaximumAmountInNotBelowTradeSize(maximumAmountIn: u256): void {
+        if (u256.lt(maximumAmountIn, this.minimumTradeSize)) {
+            throw new Revert(
+                `NATIVE_SWAP: Requested amount is below minimum trade size ${maximumAmountIn} < ${this.minimumTradeSize}`,
+            );
+        }
+    }
+
+    private ensureMaximumAmountInNotZero(maximumAmountIn: u256): void {
+        if (maximumAmountIn.isZero()) {
+            throw new Revert('NATIVE_SWAP: Maximum amount in cannot be zero');
+        }
+    }
+
+    private ensurePriceNotZeroAndLiquidity(price: u256): void {
+        if (price.isZero()) {
+            throw new Revert('NATIVE_SWAP: Price is zero or no liquidity');
+        }
     }
 }

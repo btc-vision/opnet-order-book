@@ -5,6 +5,7 @@ import {
     BytesWriter,
     encodePointer,
     MemorySlotPointer,
+    Revert,
 } from '@btc-vision/btc-runtime/runtime';
 
 const bytes = new Uint8Array(15);
@@ -52,6 +53,7 @@ export class UserLiquidity {
         this.liquidityPointer = encodePointer(liquidityPointer, buffer);
     }
 
+    //!!!! JFB pourquoi pas bool???
     public get pendingRemoval(): boolean {
         this.ensureValues();
         return this.isPendingRemoval == 1;
@@ -83,7 +85,10 @@ export class UserLiquidity {
      */
     @inline
     public setActiveFlag(flag: u8): void {
-        assert(flag == 0 || flag == 1, 'Invalid active flag value');
+        if (flag !== 0 && flag !== 1) {
+            throw new Revert('Invalid active flag value');
+        }
+
         this.ensureValues();
         if (this.activeFlag != flag) {
             this.activeFlag = flag;
@@ -99,7 +104,10 @@ export class UserLiquidity {
 
     @inline
     public setPriorityFlag(flag: u8): void {
-        assert(flag == 0 || flag == 1, 'Invalid priority flag value');
+        if (flag !== 0 && flag !== 1) {
+            throw new Revert('Invalid priority flag value');
+        }
+        
         this.ensureValues();
         if (this.priorityFlag != flag) {
             this.priorityFlag = flag;
