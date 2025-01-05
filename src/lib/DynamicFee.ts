@@ -2,7 +2,7 @@ import { u256 } from '@btc-vision/as-bignum/assembly';
 import { SafeMath, StoredU256 } from '@btc-vision/btc-runtime/runtime';
 import { VOLATILITY_POINTER } from './StoredPointers';
 
-const REF_TRADE_SIZE: u256 = u256.fromU64(1_000_000);
+const REF_TRADE_SIZE: u256 = u256.fromU64(200_000);
 
 export class DynamicFee {
     public baseFeeBP: u64; // 30 => 0.30%
@@ -19,12 +19,12 @@ export class DynamicFee {
     constructor(tokenId: u256) {
         // defaults - you can adjust or read from storage
         this.baseFeeBP = 20; // 0.20%
-        this.minFeeBP = 10; // 0.10%
-        this.maxFeeBP = 300; // 3.00%
+        this.minFeeBP = 15; // 0.10%
+        this.maxFeeBP = 150; // 1.50%
 
         this.alpha = 20; // bigger => stronger log effect
-        this.beta = 25;
-        this.gamma = 1;
+        this.beta = 15;
+        this.gamma = 3;
 
         this._volatility = new StoredU256(VOLATILITY_POINTER, tokenId, u256.Zero);
     }
@@ -84,7 +84,7 @@ export class DynamicFee {
         // 5) Add gamma * utilization
         // If utilization is 0..100 scale, then gamma * utilization => up to some hundreds of BPS
         const utilBP: u64 = utilizationRatio.toU64();
-        feeBP += this.gamma * utilBP;
+        feeBP += (this.gamma * utilBP) / 10;
 
         // 6) clamp
         if (feeBP < this.minFeeBP) {

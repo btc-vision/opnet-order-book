@@ -236,8 +236,6 @@ export class ProviderManager {
 
         provider.pendingRemoval = false;
         provider.isLp = false;
-
-        Blockchain.log(`Provider ${provider.providerId} removed from removal queue`);
     }
 
     public resetProvider(provider: Provider, burnRemainingFunds: boolean = true): void {

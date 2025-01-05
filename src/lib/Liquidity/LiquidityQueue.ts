@@ -39,7 +39,7 @@ import { DynamicFee } from '../DynamicFee';
 import { ProviderManager } from './ProviderManager';
 
 const ENABLE_TIMEOUT: bool = false;
-const ENABLE_FEES: bool = false;
+const ENABLE_FEES: bool = true;
 
 export class LiquidityQueue {
     // Reservation settings
@@ -577,8 +577,6 @@ export class LiquidityQueue {
 
                 const newOwed = SafeMath.sub(oldOwed, actualSpent);
                 this.setBTCowed(provider.providerId, newOwed);
-
-                Blockchain.log(`newOwed: ${newOwed.toString()}`);
 
                 // If they are fully or (almost) fully paid => remove from removal queue
                 if (u256.lt(newOwed, LiquidityQueue.STRICT_MINIMUM_PROVIDER_RESERVATION_AMOUNT)) {
