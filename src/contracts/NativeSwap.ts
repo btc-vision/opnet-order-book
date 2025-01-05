@@ -8,6 +8,7 @@ import {
     Revert,
     SafeMath,
     Selector,
+    U256_BYTE_LENGTH,
     U64_BYTE_LENGTH,
 } from '@btc-vision/btc-runtime/runtime';
 import { OP_NET } from '@btc-vision/btc-runtime/runtime/contracts/OP_NET';
@@ -42,6 +43,10 @@ export class NativeSwap extends OP_NET {
         return encodeSelector('deployer');
     }
 
+    private static get APPROVE_FROM_SELECTOR(): Selector {
+        return encodeSelector('approveFrom');
+    }
+
     public override onDeployment(_calldata: Calldata): void {
         FeeManager.onDeploy();
     }
@@ -61,14 +66,19 @@ export class NativeSwap extends OP_NET {
                 return this.listLiquidity(calldata);
             case encodeSelector('cancelListing'):
                 return this.cancelListing(calldata);
-            case encodeSelector('createPool'): // aka enable trading
-                return this.createPool(calldata);
-            case encodeSelector('setFees'):
-                return this.setFees(calldata);
             case encodeSelector('addLiquidity'):
                 return this.addLiquidity(calldata);
             case encodeSelector('removeLiquidity'):
                 return this.removeLiquidity(calldata);
+            case encodeSelector('createPool'): {
+                // aka enable trading
+                const token: Address = calldata.readAddress();
+                return this.createPool(calldata, token);
+            }
+            case encodeSelector('createPoolWithSignature'):
+                return this.createPoolWithSignature(calldata);
+            case encodeSelector('setFees'):
+                return this.setFees(calldata);
 
             /** Readable methods */
             case encodeSelector('getReserve'):
@@ -162,8 +172,23 @@ export class NativeSwap extends OP_NET {
         return result;
     }
 
-    private createPool(calldata: Calldata): BytesWriter {
+    private createPoolWithSignature(calldata: Calldata): BytesWriter {
+        const signature = calldata.readBytes(64);
+        const amount = calldata.readU256();
         const token: Address = calldata.readAddress();
+
+        const calldataSend = new BytesWriter(64 + ADDRESS_BYTE_LENGTH + U256_BYTE_LENGTH + 4);
+        calldataSend.writeSelector(NativeSwap.APPROVE_FROM_SELECTOR);
+        calldataSend.writeAddress(this.address);
+        calldataSend.writeU256(amount);
+        calldataSend.writeBytes(signature);
+
+        Blockchain.call(token, calldataSend);
+
+        return this.createPool(calldata, token);
+    }
+
+    private createPool(calldata: Calldata, token: Address): BytesWriter {
         const tokenOwner = this.getDeployer(token);
 
         this.ensureContractDeployer(tokenOwner);
