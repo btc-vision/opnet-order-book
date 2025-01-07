@@ -11,10 +11,12 @@ export class ReserveLiquidityOperation extends BaseOperation {
     private readonly buyer: Address;
     private readonly maximumAmountIn: u256;
     private readonly minimumAmountOut: u256;
+    private readonly providerId: u256;
     private readonly forLP: bool;
 
     constructor(
         liquidityQueue: LiquidityQueue,
+        providerId: u256,
         buyer: Address,
         maximumAmountIn: u256,
         minimumAmountOut: u256,
@@ -23,12 +25,17 @@ export class ReserveLiquidityOperation extends BaseOperation {
         super(liquidityQueue);
 
         this.buyer = buyer;
+        this.providerId = providerId;
         this.maximumAmountIn = maximumAmountIn;
         this.minimumAmountOut = minimumAmountOut;
         this.forLP = forLP;
     }
 
     public execute(): void {
+        if (u256.eq(this.providerId, this.liquidityQueue.initialLiquidityProvider)) {
+            throw new Revert('Cannot reserve initial liquidity provider');
+        }
+
         const reservation = new Reservation(this.buyer, this.liquidityQueue.token);
         this.ensureReservationValid(reservation);
         this.ensureUserNotTimedOut(reservation);
