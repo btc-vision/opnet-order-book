@@ -144,6 +144,7 @@ export class NativeSwap extends OP_NET {
     private addLiquidity(calldata: Calldata): BytesWriter {
         const token = calldata.readAddress();
         const receiver = calldata.readStringWithLength();
+
         const providerId = this.addressToPointerU256(Blockchain.tx.sender, token);
         const queue = this.getLiquidityQueue(token, this.addressToPointer(token));
         const operation = new AddLiquidityOperation(queue, providerId, receiver);
