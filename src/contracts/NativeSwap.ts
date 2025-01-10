@@ -44,7 +44,7 @@ export class NativeSwap extends OP_NET {
     }
 
     private static get APPROVE_FROM_SELECTOR(): Selector {
-        return encodeSelector('approveFrom');
+        return encodeSelector('approveFrom(address,address,uint256,bytes)');
     }
 
     public override onDeployment(_calldata: Calldata): void {
@@ -58,19 +58,21 @@ export class NativeSwap extends OP_NET {
 
     public override execute(method: Selector, calldata: Calldata): BytesWriter {
         switch (method) {
-            case encodeSelector('reserve'):
+            case encodeSelector('reserve(address, uint256, uint256, bool)'):
                 return this.reserve(calldata);
-            case encodeSelector('swap'):
+            case encodeSelector('swap(address)'):
                 return this.swap(calldata);
-            case encodeSelector('listLiquidity'):
+            case encodeSelector('listLiquidity(address, string, uint128, bool)'):
                 return this.listLiquidity(calldata);
-            case encodeSelector('cancelListing'):
+            case encodeSelector('cancelListing(address)'):
                 return this.cancelListing(calldata);
-            case encodeSelector('addLiquidity'):
+            case encodeSelector('addLiquidity(address, string)'):
                 return this.addLiquidity(calldata);
-            case encodeSelector('removeLiquidity'):
+            case encodeSelector('removeLiquidity(address, uint256)'):
                 return this.removeLiquidity(calldata);
-            case encodeSelector('createPool'): {
+            case encodeSelector(
+                'createPool(address, uint256, uint128, string, uint16, uint256, uint16)',
+            ): {
                 // aka enable trading
                 const token: Address = calldata.readAddress();
                 return this.createPool(calldata, token);
