@@ -86,13 +86,13 @@ export class NativeSwap extends OP_NET {
                 return this.setFees(calldata);
 
             /** Readable methods */
-            case encodeSelector('getReserve'):
+            case encodeSelector('getReserve(address)'):
                 return this.getReserve(calldata);
-            case encodeSelector('getQuote'):
+            case encodeSelector('getQuote(address,uint256)'):
                 return this.getQuote(calldata);
-            case encodeSelector('getProviderDetails'):
+            case encodeSelector('getProviderDetails(address)'):
                 return this.getProviderDetails(calldata);
-            case encodeSelector('getPriorityQueueCost'):
+            case encodeSelector('getPriorityQueueCost(address)'):
                 return this.getPriorityQueueCost(calldata);
             case encodeSelector('getFees'):
                 return this.getFees(calldata);
