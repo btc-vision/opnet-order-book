@@ -58,28 +58,28 @@ export class NativeSwap extends OP_NET {
 
     public override execute(method: Selector, calldata: Calldata): BytesWriter {
         switch (method) {
-            case encodeSelector('reserve(address, uint256, uint256, bool)'):
+            case encodeSelector('reserve(address,uint256,uint256,bool)'):
                 return this.reserve(calldata);
             case encodeSelector('swap(address)'):
                 return this.swap(calldata);
-            case encodeSelector('listLiquidity(address, string, uint128, bool)'):
+            case encodeSelector('listLiquidity(address,string,uint128,bool)'):
                 return this.listLiquidity(calldata);
             case encodeSelector('cancelListing(address)'):
                 return this.cancelListing(calldata);
-            case encodeSelector('addLiquidity(address, string)'):
+            case encodeSelector('addLiquidity(address,string)'):
                 return this.addLiquidity(calldata);
-            case encodeSelector('removeLiquidity(address, uint256)'):
+            case encodeSelector('removeLiquidity(address,uint256)'):
                 return this.removeLiquidity(calldata);
             case encodeSelector(
-                'createPool(address, uint256, uint128, string, uint16, uint256, uint16)',
+                'createPool(address,uint256,uint128,string,uint16,uint256,uint16)',
             ): {
                 // aka enable trading
                 const token: Address = calldata.readAddress();
                 return this.createPool(calldata, token);
             }
-            case encodeSelector('createPoolWithSignature'):
+            case encodeSelector('createPoolWithSignature(address,bytes,uint256)'):
                 return this.createPoolWithSignature(calldata);
-            case encodeSelector('setFees'):
+            case encodeSelector('setFees(uint64,uint64,uint64)'):
                 return this.setFees(calldata);
 
             /** Readable methods */
