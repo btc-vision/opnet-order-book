@@ -77,8 +77,11 @@ export class NativeSwap extends OP_NET {
                 const token: Address = calldata.readAddress();
                 return this.createPool(calldata, token);
             }
-            case encodeSelector('createPoolWithSignature(address,bytes,uint256)'):
+            case encodeSelector(
+                'createPoolWithSignature(bytes,address,uint256,uint128,string,uint16,uint256,uint16)',
+            ): {
                 return this.createPoolWithSignature(calldata);
+            }
             case encodeSelector('setFees(uint64,uint64,uint64)'):
                 return this.setFees(calldata);
 
