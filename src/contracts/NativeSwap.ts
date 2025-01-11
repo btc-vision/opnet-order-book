@@ -44,7 +44,7 @@ export class NativeSwap extends OP_NET {
     }
 
     private static get APPROVE_FROM_SELECTOR(): Selector {
-        return encodeSelector('approveFrom');
+        return encodeSelector('approveFrom(address,address,uint256,bytes)');
     }
 
     public override onDeployment(_calldata: Calldata): void {
@@ -58,36 +58,41 @@ export class NativeSwap extends OP_NET {
 
     public override execute(method: Selector, calldata: Calldata): BytesWriter {
         switch (method) {
-            case encodeSelector('reserve'):
+            case encodeSelector('reserve(address,uint256,uint256,bool)'):
                 return this.reserve(calldata);
-            case encodeSelector('swap'):
+            case encodeSelector('swap(address)'):
                 return this.swap(calldata);
-            case encodeSelector('listLiquidity'):
+            case encodeSelector('listLiquidity(address,string,uint128,bool)'):
                 return this.listLiquidity(calldata);
-            case encodeSelector('cancelListing'):
+            case encodeSelector('cancelListing(address)'):
                 return this.cancelListing(calldata);
-            case encodeSelector('addLiquidity'):
+            case encodeSelector('addLiquidity(address,string)'):
                 return this.addLiquidity(calldata);
-            case encodeSelector('removeLiquidity'):
+            case encodeSelector('removeLiquidity(address,uint256)'):
                 return this.removeLiquidity(calldata);
-            case encodeSelector('createPool'): {
+            case encodeSelector(
+                'createPool(address,uint256,uint128,string,uint16,uint256,uint16)',
+            ): {
                 // aka enable trading
                 const token: Address = calldata.readAddress();
                 return this.createPool(calldata, token);
             }
-            case encodeSelector('createPoolWithSignature'):
+            case encodeSelector(
+                'createPoolWithSignature(bytes,address,uint256,uint128,string,uint16,uint256,uint16)',
+            ): {
                 return this.createPoolWithSignature(calldata);
-            case encodeSelector('setFees'):
+            }
+            case encodeSelector('setFees(uint64,uint64,uint64)'):
                 return this.setFees(calldata);
 
             /** Readable methods */
-            case encodeSelector('getReserve'):
+            case encodeSelector('getReserve(address)'):
                 return this.getReserve(calldata);
-            case encodeSelector('getQuote'):
+            case encodeSelector('getQuote(address,uint256)'):
                 return this.getQuote(calldata);
-            case encodeSelector('getProviderDetails'):
+            case encodeSelector('getProviderDetails(address)'):
                 return this.getProviderDetails(calldata);
-            case encodeSelector('getPriorityQueueCost'):
+            case encodeSelector('getPriorityQueueCost(address)'):
                 return this.getPriorityQueueCost(calldata);
             case encodeSelector('getFees'):
                 return this.getFees(calldata);
@@ -144,6 +149,7 @@ export class NativeSwap extends OP_NET {
     private addLiquidity(calldata: Calldata): BytesWriter {
         const token = calldata.readAddress();
         const receiver = calldata.readStringWithLength();
+
         const providerId = this.addressToPointerU256(Blockchain.tx.sender, token);
         const queue = this.getLiquidityQueue(token, this.addressToPointer(token));
         const operation = new AddLiquidityOperation(queue, providerId, receiver);
@@ -297,9 +303,11 @@ export class NativeSwap extends OP_NET {
         this.ensureSufficientFeesCollected(totalFee);
 
         const buyer: Address = Blockchain.tx.sender;
+        const providerId = this.addressToPointerU256(Blockchain.tx.sender, token);
         const queue = this.getLiquidityQueue(token, this.addressToPointer(token));
         const operation = new ReserveLiquidityOperation(
             queue,
+            providerId,
             buyer,
             maximumAmountIn,
             minimumAmountOut,
