@@ -528,7 +528,7 @@ export class NativeSwap extends OP_NET {
         }
     }
 
-    private ensureValidSignatureLength(signature: Uint8Array) {
+    private ensureValidSignatureLength(signature: Uint8Array): void {
         if (signature.length !== 64) {
             throw new Revert('NATIVE_SWAP: Invalid signature length');
         }
