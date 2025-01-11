@@ -66,10 +66,6 @@ export class AddLiquidityOperation extends BaseOperation {
             tokensBoughtFromQueue,
         );
 
-        // 6. Because from the pool’s perspective, we had a "net buy" of tokens
-        //    with `btcSpent` BTC. That is captured in buyTokens(...).
-        //this.buyTokens(tokensBoughtFromQueue, btcSpent);
-
         // 7. Credit the user’s "virtual BTC" so they can withdraw it later in removeLiquidity.
         const owedBefore = this.liquidityQueue.getBTCowed(this.providerId);
         const owedAfter = SafeMath.add(owedBefore, btcSpent);

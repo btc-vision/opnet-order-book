@@ -171,6 +171,7 @@ export class ListTokensForSaleOperation extends BaseOperation {
             this.liquidityQueue.buyTokens(totalTax.toU256(), u256.Zero);
 
             this.liquidityQueue.updateTotalReserve(totalTax.toU256(), false);
+            // TODO: Motoswap fee collection here
             TransferHelper.safeTransfer(
                 this.liquidityQueue.token,
                 Address.dead(),

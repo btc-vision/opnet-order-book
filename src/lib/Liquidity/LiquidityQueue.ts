@@ -39,7 +39,7 @@ import { DynamicFee } from '../DynamicFee';
 import { ProviderManager } from './ProviderManager';
 
 const ENABLE_TIMEOUT: bool = false;
-const ENABLE_FEES: bool = true;
+const ENABLE_FEES: bool = false;
 
 export class LiquidityQueue {
     // Reservation settings
@@ -506,25 +506,7 @@ export class LiquidityQueue {
 
             // If no BTC is sent to this provider
             if (satoshisSent.isZero()) {
-                // If this is a removal provider, we also revert that portion
-                //         from _lpBTCowedReserved (since it never got paid).
-                if (queueType === LIQUIDITY_REMOVAL_TYPE) {
-                    // Convert 'reservedAmount' back to sat (approx) using the original quote
-                    const costInSats = this.tokensToSatoshis(
-                        reservedAmount.toU256(),
-                        quoteAtReservation,
-                    );
-
-                    // clamp by actual owedReserved
-                    const owedReserved = this.getBTCowedReserved(provider.providerId);
-                    const revertSats = SafeMath.min(costInSats, owedReserved);
-
-                    // reduce the owedReserved by revertSats
-                    const newReserved = SafeMath.sub(owedReserved, revertSats);
-                    this.setBTCowedReserved(provider.providerId, newReserved);
-                } else if (queueType !== LIQUIDITY_REMOVAL_TYPE) {
-                    this.restoreReservedLiquidityForProvider(provider, reservedAmount);
-                }
+                this.noStatsSendToProvider(queueType, reservedAmount, quoteAtReservation, provider);
 
                 // Nothing more for this provider, continue
                 continue;
@@ -674,6 +656,7 @@ export class LiquidityQueue {
             throw new Revert('No active reservation for this address.');
         }
 
+        //TODO: !!!! Add block threshold. to prevent mev attack, user must set number of block to wait
         if (
             reservation.expirationBlock() - LiquidityQueue.RESERVATION_EXPIRE_AFTER ===
             Blockchain.block.numberU64
@@ -993,6 +976,30 @@ export class LiquidityQueue {
             this.consumedOutputsFromUTXOs.set(addy, amount);
         } else {
             this.consumedOutputsFromUTXOs.set(addy, SafeMath.add64(amount, consumedAlready));
+        }
+    }
+
+    private noStatsSendToProvider(
+        queueType: u8,
+        reservedAmount: u128,
+        quoteAtReservation: u256,
+        provider: Provider,
+    ): void {
+        // If this is a removal provider, we also revert that portion
+        //         from _lpBTCowedReserved (since it never got paid).
+        if (queueType === LIQUIDITY_REMOVAL_TYPE) {
+            // Convert 'reservedAmount' back to sat (approx) using the original quote
+            const costInSats = this.tokensToSatoshis(reservedAmount.toU256(), quoteAtReservation);
+
+            // clamp by actual owedReserved
+            const owedReserved = this.getBTCowedReserved(provider.providerId);
+            const revertSats = SafeMath.min(costInSats, owedReserved);
+
+            // reduce the owedReserved by revertSats
+            const newReserved = SafeMath.sub(owedReserved, revertSats);
+            this.setBTCowedReserved(provider.providerId, newReserved);
+        } else {
+            this.restoreReservedLiquidityForProvider(provider, reservedAmount);
         }
     }
 }

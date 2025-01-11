@@ -174,9 +174,7 @@ export class NativeSwap extends OP_NET {
 
     private createPoolWithSignature(calldata: Calldata): BytesWriter {
         const signature = calldata.readBytesWithLength();
-        if (signature.length !== 64) {
-            throw new Revert('NATIVE_SWAP: Invalid signature length');
-        }
+        this.ensureValidSignatureLength(signature);
 
         const amount = calldata.readU256();
         const token: Address = calldata.readAddress();
@@ -519,6 +517,12 @@ export class NativeSwap extends OP_NET {
     private ensurePriceNotZeroAndLiquidity(price: u256): void {
         if (price.isZero()) {
             throw new Revert('NATIVE_SWAP: Price is zero or no liquidity');
+        }
+    }
+
+    private ensureValidSignatureLength(signature: Uint8Array) {
+        if (signature.length !== 64) {
+            throw new Revert('NATIVE_SWAP: Invalid signature length');
         }
     }
 }
