@@ -8,6 +8,7 @@ import {
     Revert,
     SafeMath,
     Selector,
+    U128_BYTE_LENGTH,
     U256_BYTE_LENGTH,
     U64_BYTE_LENGTH,
 } from '@btc-vision/btc-runtime/runtime';
@@ -128,7 +129,7 @@ export class NativeSwap extends OP_NET {
         const providerId = this.addressToPointerU256(Blockchain.tx.sender, token);
         const provider = getProvider(providerId);
 
-        const writer = new BytesWriter(32);
+        const writer = new BytesWriter(U128_BYTE_LENGTH * 2 + provider.btcReceiver.length);
         writer.writeU128(provider.liquidity);
         writer.writeU128(provider.reserved);
         writer.writeStringWithLength(provider.btcReceiver);
@@ -141,7 +142,7 @@ export class NativeSwap extends OP_NET {
         const queue = this.getLiquidityQueue(token, this.addressToPointer(token));
         const cost = queue.getCostPriorityFee();
 
-        const writer = new BytesWriter(32);
+        const writer = new BytesWriter(U64_BYTE_LENGTH);
         writer.writeU64(cost);
         return writer;
     }
