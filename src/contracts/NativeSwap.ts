@@ -129,7 +129,7 @@ export class NativeSwap extends OP_NET {
         const providerId = this.addressToPointerU256(Blockchain.tx.sender, token);
         const provider = getProvider(providerId);
 
-        const writer = new BytesWriter(U128_BYTE_LENGTH * 2 + provider.btcReceiver.length);
+        const writer = new BytesWriter(U128_BYTE_LENGTH * 2 + 2 + provider.btcReceiver.length);
         writer.writeU128(provider.liquidity);
         writer.writeU128(provider.reserved);
         writer.writeStringWithLength(provider.btcReceiver);
