@@ -97,9 +97,22 @@ export class NativeSwap extends OP_NET {
                 return this.getPriorityQueueCost(calldata);
             case encodeSelector('getFees'):
                 return this.getFees(calldata);
+            case encodeSelector('getAntibotSettings(address)'):
+                return this.getAntibotSettings(calldata);
             default:
                 return super.execute(method, calldata);
         }
+    }
+
+    private getAntibotSettings(calldata: Calldata): BytesWriter {
+        const token = calldata.readAddress();
+        const queue = this.getLiquidityQueue(token, this.addressToPointer(token));
+
+        const writer = new BytesWriter(U64_BYTE_LENGTH + U256_BYTE_LENGTH);
+        writer.writeU64(queue.antiBotExpirationBlock);
+        writer.writeU256(queue.maxTokensPerReservation);
+
+        return writer;
     }
 
     private getFees(_calldata: Calldata): BytesWriter {
@@ -487,7 +500,7 @@ export class NativeSwap extends OP_NET {
 
     private ensureContractDeployer(tokenOwner: Address): void {
         if (Blockchain.tx.origin.equals(tokenOwner) == false) {
-            throw new Revert('NATIVE_SWAP: Only token owner can set quote');
+            throw new Revert('NATIVE_SWAP: Only token owner can call createPool');
         }
     }
 
