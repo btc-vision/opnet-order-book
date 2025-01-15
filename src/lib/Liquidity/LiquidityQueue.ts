@@ -86,6 +86,7 @@ export class LiquidityQueue {
     constructor(
         public readonly token: Address,
         public readonly tokenIdUint8Array: Uint8Array,
+        purgeOldReservations: boolean,
     ) {
         const tokenId = u256.fromBytes(token, true);
         this.tokenId = tokenId;
@@ -133,8 +134,9 @@ export class LiquidityQueue {
         this._settingPurge = new StoredU64(LIQUIDITY_LAST_UPDATE_BLOCK_POINTER, tokenId, u256.Zero);
         this._settings = new StoredU64(RESERVATION_SETTINGS_POINTER, tokenId, u256.Zero);
 
-        // Purge old reservations
-        this.purgeReservationsAndRestoreProviders();
+        if (purgeOldReservations) {
+            this.purgeReservationsAndRestoreProviders();
+        }
 
         this.updateVirtualPoolIfNeeded();
     }

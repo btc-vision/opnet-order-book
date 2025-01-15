@@ -106,7 +106,7 @@ export class NativeSwap extends OP_NET {
 
     private getAntibotSettings(calldata: Calldata): BytesWriter {
         const token = calldata.readAddress();
-        const queue = this.getLiquidityQueue(token, this.addressToPointer(token));
+        const queue = this.getLiquidityQueue(token, this.addressToPointer(token), true);
 
         const writer = new BytesWriter(U64_BYTE_LENGTH + U256_BYTE_LENGTH);
         writer.writeU64(queue.antiBotExpirationBlock);
@@ -152,7 +152,7 @@ export class NativeSwap extends OP_NET {
 
     private getPriorityQueueCost(calldata: Calldata): BytesWriter {
         const token = calldata.readAddress();
-        const queue = this.getLiquidityQueue(token, this.addressToPointer(token));
+        const queue = this.getLiquidityQueue(token, this.addressToPointer(token), true);
         const cost = queue.getCostPriorityFee();
 
         const writer = new BytesWriter(U64_BYTE_LENGTH);
@@ -165,7 +165,7 @@ export class NativeSwap extends OP_NET {
         const receiver = calldata.readStringWithLength();
 
         const providerId = this.addressToPointerU256(Blockchain.tx.sender, token);
-        const queue = this.getLiquidityQueue(token, this.addressToPointer(token));
+        const queue = this.getLiquidityQueue(token, this.addressToPointer(token), false);
         const operation = new AddLiquidityOperation(queue, providerId, receiver);
 
         operation.execute();
@@ -180,7 +180,7 @@ export class NativeSwap extends OP_NET {
         const token = calldata.readAddress();
         const amount = calldata.readU256();
         const providerId = this.addressToPointerU256(Blockchain.tx.sender, token);
-        const queue = this.getLiquidityQueue(token, this.addressToPointer(token));
+        const queue = this.getLiquidityQueue(token, this.addressToPointer(token), true);
 
         const operation = new RemoveLiquidityOperation(queue, providerId, amount);
         operation.execute();
@@ -227,7 +227,7 @@ export class NativeSwap extends OP_NET {
         this.ensureInitialLiquidityNotZero(initialLiquidity);
         this.ensureAntibotSettingsValid(antiBotEnabledFor, antiBotMaximumTokensPerReservation);
 
-        const queue = this.getLiquidityQueue(token, this.addressToPointer(token));
+        const queue = this.getLiquidityQueue(token, this.addressToPointer(token), true);
         if (!queue.p0.isZero()) {
             throw new Revert('Base quote already set');
         }
@@ -275,7 +275,7 @@ export class NativeSwap extends OP_NET {
         const providerId = this.addressToPointerU256(Blockchain.tx.sender, token);
         const tokenId = this.addressToPointer(token);
 
-        const queue = this.getLiquidityQueue(token, tokenId);
+        const queue = this.getLiquidityQueue(token, tokenId, true);
         const operation = new ListTokensForSaleOperation(
             queue,
             providerId,
@@ -318,7 +318,7 @@ export class NativeSwap extends OP_NET {
 
         const buyer: Address = Blockchain.tx.sender;
         const providerId = this.addressToPointerU256(Blockchain.tx.sender, token);
-        const queue = this.getLiquidityQueue(token, this.addressToPointer(token));
+        const queue = this.getLiquidityQueue(token, this.addressToPointer(token), true);
         const operation = new ReserveLiquidityOperation(
             queue,
             providerId,
@@ -348,7 +348,7 @@ export class NativeSwap extends OP_NET {
         const providerId = this.addressToPointerU256(Blockchain.tx.sender, token);
         const tokenId = this.addressToPointer(token);
 
-        const queue = this.getLiquidityQueue(token, tokenId);
+        const queue = this.getLiquidityQueue(token, tokenId, true);
 
         const operation = new CancelListingOperation(queue, providerId);
         operation.execute();
@@ -368,7 +368,11 @@ export class NativeSwap extends OP_NET {
     private _swap(token: Address): BytesWriter {
         this.ensureValidTokenAddress(token);
 
-        const queue: LiquidityQueue = this.getLiquidityQueue(token, this.addressToPointer(token));
+        const queue: LiquidityQueue = this.getLiquidityQueue(
+            token,
+            this.addressToPointer(token),
+            false,
+        );
 
         const operation = new SwapOperation(queue);
         operation.execute();
@@ -388,7 +392,7 @@ export class NativeSwap extends OP_NET {
     private _getReserve(token: Address): BytesWriter {
         this.ensureValidTokenAddress(token);
 
-        const queue = this.getLiquidityQueue(token, this.addressToPointer(token));
+        const queue = this.getLiquidityQueue(token, this.addressToPointer(token), true);
 
         const result = new BytesWriter(128);
         result.writeU256(queue.liquidity);
@@ -418,7 +422,11 @@ export class NativeSwap extends OP_NET {
         this.ensureValidTokenAddress(token);
         this.ensureMaximumAmountInNotZero(satoshisIn);
 
-        const queue: LiquidityQueue = this.getLiquidityQueue(token, this.addressToPointer(token));
+        const queue: LiquidityQueue = this.getLiquidityQueue(
+            token,
+            this.addressToPointer(token),
+            true,
+        );
 
         const price: u256 = queue.quote();
         this.ensurePriceNotZeroAndLiquidity(price);
@@ -448,8 +456,12 @@ export class NativeSwap extends OP_NET {
         return result;
     }
 
-    private getLiquidityQueue(token: Address, tokenId: Uint8Array): LiquidityQueue {
-        return new LiquidityQueue(token, tokenId);
+    private getLiquidityQueue(
+        token: Address,
+        tokenId: Uint8Array,
+        purgeOldReservations: boolean,
+    ): LiquidityQueue {
+        return new LiquidityQueue(token, tokenId, purgeOldReservations);
     }
 
     private addressToPointerU256(address: Address, token: Address): u256 {
