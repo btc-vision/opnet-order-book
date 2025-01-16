@@ -9,6 +9,7 @@ import {
   SafeMath,
   Selector,
   StoredAddress,
+  StoredU256,
   U128_BYTE_LENGTH,
   U256_BYTE_LENGTH,
   U64_BYTE_LENGTH,
@@ -36,12 +37,14 @@ import { SwapOperation } from '../lib/Liquidity/operations/SwapOperation';
 @final
 export class NativeSwap extends OP_NET {
   private readonly minimumTradeSize: u256 = u256.fromU32(10_000); // The minimum trade size in satoshis.
+  public stakingContractFeeBips: StoredU256;
   public stakingContractAddress: StoredAddress;
 
   public constructor() {
     super();
 
     this.stakingContractAddress = new StoredAddress(Blockchain.nextPointer, Address.dead())
+    this.stakingContractFeeBips = new StoredU256(Blockchain.nextPointer, u256.Zero, u256.Zero)
   }
 
   private static get DEPLOYER_SELECTOR(): Selector {
@@ -54,6 +57,9 @@ export class NativeSwap extends OP_NET {
 
   public override onDeployment(_calldata: Calldata): void {
     FeeManager.onDeploy();
+
+    // Default fee: 0.2%
+    this.stakingContractFeeBips.set(u256.from(20))
   }
 
   public override onExecutionCompleted(): void {
@@ -91,6 +97,8 @@ export class NativeSwap extends OP_NET {
         return this.setFees(calldata);
       case encodeSelector('setStakingContractAddress(address)'):
         return this.setStakingContractAddress(calldata);
+      case encodeSelector('setStakingFeeBips(uint256)'):
+        return this.setStakingFeeBips(calldata);
       /** Readable methods */
       case encodeSelector('getReserve(address)'):
         return this.getReserve(calldata);
@@ -104,6 +112,8 @@ export class NativeSwap extends OP_NET {
         return this.getFees(calldata);
       case encodeSelector('getStakingContractAddress'):
         return this.getStakingContractAddress(calldata);
+      case encodeSelector('getStakingFeeBips'):
+        return this.getStakingFeeBips(calldata);
       case encodeSelector('getAntibotSettings(address)'):
         return this.getAntibotSettings(calldata);
       default:
@@ -151,10 +161,23 @@ export class NativeSwap extends OP_NET {
     return new BytesWriter(1);
   }
 
-  private getStakingContractAddress(calldata: Calldata): BytesWriter {
-    this.onlyDeployer(Blockchain.tx.sender);
+  private getStakingContractAddress(_calldata: Calldata): BytesWriter {
     const response = new BytesWriter(ADDRESS_BYTE_LENGTH)
     response.writeAddress(this.stakingContractAddress.value)
+
+    return response
+  }
+
+  private setStakingFeeBips(calldata: Calldata): BytesWriter {
+    this.onlyDeployer(Blockchain.tx.sender);
+    this.stakingContractFeeBips.set(calldata.readU256())
+
+    return new BytesWriter(1)
+  }
+
+  private getStakingFeeBips(_calldata: Calldata): BytesWriter {
+    const response = new BytesWriter(U256_BYTE_LENGTH)
+    response.writeU256(this.stakingContractFeeBips.value)
 
     return response
   }
@@ -396,7 +419,7 @@ export class NativeSwap extends OP_NET {
       false,
     );
 
-    const operation = new SwapOperation(queue, this.stakingContractAddress.value);
+    const operation = new SwapOperation(queue, this.stakingContractAddress.value, this.stakingContractFeeBips.value);
     operation.execute();
 
     queue.save();

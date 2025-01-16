@@ -15,9 +15,10 @@ import {
 import { SwapExecutedEvent } from '../../../events/SwapExecutedEvent';
 import { Reservation } from '../../Reservation';
 import { u256 } from '@btc-vision/as-bignum/assembly';
+import { depositStakingRewards } from '../../../utils/OrderBookUtils';
 
 export class SwapOperation extends BaseOperation {
-  constructor(liquidityQueue: LiquidityQueue, private readonly stakingContractAddress: Address) {
+  constructor(liquidityQueue: LiquidityQueue, private readonly stakingContractAddress: Address, private readonly stakingFeeBips: u256) {
     super(liquidityQueue);
   }
 
@@ -44,30 +45,15 @@ export class SwapOperation extends BaseOperation {
 
     const buyer: Address = Blockchain.tx.sender;
 
-    // TODO: Extract fee numbers to constants
     const stakingFee = SafeMath.div(
-      SafeMath.mul(totalTokensPurchased, u256.from(20)),
+      SafeMath.mul(totalTokensPurchased, this.stakingFeeBips),
       u256.from(1000)
     )
     const withdrawalAmount = SafeMath.sub(totalTokensPurchased, stakingFee)
     // transfer tokens to buyer
     TransferHelper.safeTransfer(this.liquidityQueue.token, buyer, withdrawalAmount);
     // transfer fee to staking contract
-    TransferHelper.safeApprove(this.liquidityQueue.token, this.stakingContractAddress, stakingFee);
-    // TODO: Extract to helper
-    const calldata = new BytesWriter(
-      SELECTOR_BYTE_LENGTH + ADDRESS_BYTE_LENGTH + U256_BYTE_LENGTH,
-    );
-    calldata.writeSelector(encodeSelector('depositAndDistributeRewards(address,uint256)'));
-    calldata.writeAddress(this.liquidityQueue.token);
-    calldata.writeU256(stakingFee);
-
-    const response = Blockchain.call(this.stakingContractAddress, calldata);
-    const isOk = response.readBoolean();
-
-    if (!isOk) {
-      throw new Revert(`NativeSwap: STAKING_DEPOSIT_FAILED`);
-    }
+    depositStakingRewards(this.liquidityQueue.token, this.stakingContractAddress, stakingFee)
 
     this.liquidityQueue.updateTotalReserved(totalTokensPurchased, false);
     this.liquidityQueue.updateTotalReserve(totalTokensPurchased, false);
