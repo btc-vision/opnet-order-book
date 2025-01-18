@@ -3,9 +3,9 @@ import {
     ADDRESS_BYTE_LENGTH,
     Blockchain,
     BytesWriter,
-    StoredBooleanArray,
     StoredU128Array,
     StoredU32Array,
+    StoredU8Array,
 } from '@btc-vision/btc-runtime/runtime';
 import {
     RESERVATION_AMOUNTS,
@@ -16,12 +16,16 @@ import {
 import { ripemd160 } from '@btc-vision/btc-runtime/runtime/env/global';
 import { u128, u256 } from '@btc-vision/as-bignum/assembly';
 import { UserReservation } from '../data-types/UserReservation';
-import { LiquidityQueue } from './LiquidityQueue';
+import { LiquidityQueue } from './Liquidity/LiquidityQueue';
+
+export const NORMAL_TYPE: u8 = 0;
+export const PRIORITY_TYPE: u8 = 1;
+export const LIQUIDITY_REMOVAL_TYPE: u8 = 2;
 
 export class Reservation {
     public reservedIndexes: StoredU32Array;
     public reservedValues: StoredU128Array;
-    public reservedPriority: StoredBooleanArray;
+    public reservedPriority: StoredU8Array;
 
     public reservationId: u128;
     public userReservation: UserReservation;
@@ -41,17 +45,29 @@ export class Reservation {
 
         this.reservedIndexes = new StoredU32Array(RESERVATION_INDEXES, reservationId, u256.Zero);
         this.reservedValues = new StoredU128Array(RESERVATION_AMOUNTS, reservationId, u256.Zero);
-        this.reservedPriority = new StoredBooleanArray(
-            RESERVATION_PRIORITY,
-            reservationId,
-            u256.Zero,
-        );
+        this.reservedPriority = new StoredU8Array(RESERVATION_PRIORITY, reservationId, u256.Zero);
     }
 
     public get createdAt(): u64 {
         const block: u64 = this.expirationBlock();
 
         return block - LiquidityQueue.RESERVATION_EXPIRE_AFTER;
+    }
+
+    public get userTimeoutBlockExpiration(): u64 {
+        return this.userReservation.getUserTimeoutBlockExpiration();
+    }
+
+    public set userTimeoutBlockExpiration(block: u64) {
+        this.userReservation.setUserTimeoutBlockExpiration(block);
+    }
+
+    public get reservedLP(): bool {
+        return this.userReservation.reservedForLiquidityPool;
+    }
+
+    public set reservedLP(value: bool) {
+        this.userReservation.reservedForLiquidityPool = value;
     }
 
     public static load(reservationId: u128): Reservation {
@@ -100,19 +116,18 @@ export class Reservation {
         this.reservedIndexes.reset();
         this.reservedValues.reset();
         this.reservedPriority.reset();
-
-        this.userReservation.setExpirationBlock(0);
-
+        this.userReservation.reset();
+        
         this.save();
     }
 
-    public reserveAtIndex(index: u32, amount: u128, priority: boolean): void {
+    public reserveAtIndex(index: u32, amount: u128, type: u8): void {
         this.reservedIndexes.push(index);
         this.reservedValues.push(amount);
-        this.reservedPriority.push(priority);
+        this.reservedPriority.push(type);
     }
 
-    public getReservedPriority(): bool[] {
+    public getQueueTypes(): u8[] {
         return this.reservedPriority.getAll(0, this.reservedPriority.getLength());
     }
 

@@ -9,7 +9,7 @@
 
 [![code style: prettier](https://img.shields.io/badge/code_style-prettier-ff69b4.svg?style=flat-square)](https://github.com/prettier/prettier)
 
-Motoswap’s **Native Swap** contract allows users to perform efficient, on chain swaps leveraging web technologies such
+Motoswap's **Native Swap** contract allows users to perform efficient, on chain swaps leveraging web technologies such
 as AssemblyScript and WebAssembly.
 
 For **detailed documentation** on how the Native Swap works such as mechanics, math, and security please

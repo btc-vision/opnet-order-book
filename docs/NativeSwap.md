@@ -267,14 +267,14 @@ why:
 
 As mentioned, the key driver is that any misstep after a BTC transaction is broadcast leaves the protocol holding the
 bag. In many typical blockchain AMMs (like on Ethereum), a revert just undoes the whole transaction, giving the user
-back their ETH and leaving the contract state unchanged. That’s impossible once BTC is transmitted to a noncustodial
+back their ETH and leaving the contract state unchanged. That's impossible once BTC is transmitted to a noncustodial
 address. Hence, the design choice of *block-based reservations* is crucial.
 
 #### Guaranteed Consistency for Liquidity Providers
 
 Liquidity providers deposit tokens into the system and rely on the AMM to manage partial or full usage of their
 liquidity. By having a per-block update cycle, the system can neatly handle multiple user reservations and finalize
-them after a single block. This approach ensures providers don’t get sandwiched or exploited between sub-block
+them after a single block. This approach ensures providers don't get sandwiched or exploited between sub-block
 transactions.
 
 #### Reservation Expiry & Cleanup
@@ -282,7 +282,7 @@ transactions.
 Because the reservation has a fixed lifespan (e.g., 5 blocks in the `RESERVATION_EXPIRE_AFTER` parameter), it
 prevents indefinite token lockdown. If the user does not finalize the swap or send the BTC in time, the system calls
 `purgeReservationsAndRestoreProviders()`, freeing up the tokens for other swaps. This is especially vital given that
-we cannot forcibly "undo" the user’s un-sent Bitcoin transaction after some waiting period.
+we cannot forcibly "undo" the user's un-sent Bitcoin transaction after some waiting period.
 
 ___
 
@@ -296,7 +296,6 @@ Below is how each main function works, from the user's perspective.
 **Purpose:** Initialize a brand-new liquidity pool with a *floor price* and some initial token liquidity.
 
 - **floorPrice**: The initial price (scaled in a specific way internally).
-- **providerId**: The unique identifier for the *initial provider*.
 - **initialLiquidity**: Amount of tokens to seed the pool.
 - **receiver**: The BTC address where the initial provider wants to receive BTC.
 - **antiBotEnabledFor** & **antiBotMaximumTokensPerReservation**: Optional anti-bot configuration.

@@ -5,6 +5,7 @@ import {
     BytesWriter,
     encodePointer,
     MemorySlotPointer,
+    Revert,
 } from '@btc-vision/btc-runtime/runtime';
 
 const bytes = new Uint8Array(15);
@@ -17,31 +18,53 @@ export const MAX_RESERVATION_AMOUNT_PROVIDER = u128.fromBytes(bytes, true);
 @final
 export class UserLiquidity {
     private readonly u256Pointer: u256;
+    private readonly liquidityPointer: u256;
 
     // Internal fields representing the components of UserLiquidity
     private activeFlag: u8 = 0;
     private priorityFlag: u8 = 0;
-    private pendingReservationsFlag: u8 = 0;
+    private canProvide: u8 = 0;
+    private isLiquidityProvider: u8 = 0;
+    private isPendingRemoval: u8 = 0;
+
     private liquidityAmount: u128 = u128.Zero;
     private reservedAmount: u128 = u128.Zero;
+    private liquidityProvided: u256 = u256.Zero;
 
     // Flags to manage state
     private isLoaded: bool = false;
+    private isLoadedProvider: bool = false;
     private isChanged: bool = false;
+    private liquidityChanged: bool = false;
 
     /**
      * @constructor
      * @param {u16} pointer - The primary pointer identifier.
+     * @param {u16} liquidityPointer - The liquidity pointer identifier.
      * @param {MemorySlotPointer} subPointer - The sub-pointer for memory slot addressing.
      */
-    constructor(
-        public pointer: u16,
-        public subPointer: MemorySlotPointer,
-    ) {
+    constructor(pointer: u16, liquidityPointer: u16, subPointer: MemorySlotPointer) {
         const writer = new BytesWriter(32);
         writer.writeU256(subPointer);
 
-        this.u256Pointer = encodePointer(pointer, writer.getBuffer());
+        const buffer: Uint8Array = writer.getBuffer();
+
+        this.u256Pointer = encodePointer(pointer, buffer);
+        this.liquidityPointer = encodePointer(liquidityPointer, buffer);
+    }
+
+    //!!!! JFB pourquoi pas bool???
+    public get pendingRemoval(): boolean {
+        this.ensureValues();
+        return this.isPendingRemoval == 1;
+    }
+
+    public set pendingRemoval(pending: boolean) {
+        this.ensureValues();
+        if (this.isPendingRemoval != (pending ? 1 : 0)) {
+            this.isPendingRemoval = pending ? 1 : 0;
+            this.isChanged = true;
+        }
     }
 
     /**
@@ -62,7 +85,10 @@ export class UserLiquidity {
      */
     @inline
     public setActiveFlag(flag: u8): void {
-        assert(flag == 0 || flag == 1, 'Invalid active flag value');
+        if (flag !== 0 && flag !== 1) {
+            throw new Revert('Invalid active flag value');
+        }
+
         this.ensureValues();
         if (this.activeFlag != flag) {
             this.activeFlag = flag;
@@ -78,7 +104,10 @@ export class UserLiquidity {
 
     @inline
     public setPriorityFlag(flag: u8): void {
-        assert(flag == 0 || flag == 1, 'Invalid priority flag value');
+        if (flag !== 0 && flag !== 1) {
+            throw new Revert('Invalid priority flag value');
+        }
+        
         this.ensureValues();
         if (this.priorityFlag != flag) {
             this.priorityFlag = flag;
@@ -86,28 +115,17 @@ export class UserLiquidity {
         }
     }
 
-    /**
-     * @method getPendingReservationsFlag
-     * @description Retrieves the pending reservations flag.
-     * @returns {u8} - The pending reservations flag (0 or 1).
-     */
     @inline
-    public getPendingReservationsFlag(): u8 {
+    public canProvideLiquidity(): boolean {
         this.ensureValues();
-        return this.pendingReservationsFlag;
+        return this.canProvide == 1;
     }
 
-    /**
-     * @method setPendingReservationsFlag
-     * @description Sets the pending reservations flag.
-     * @param {u8} flag - The pending reservations flag value (0 or 1).
-     */
     @inline
-    public setPendingReservationsFlag(flag: u8): void {
-        assert(flag == 0 || flag == 1, 'Invalid pending reservations flag value');
+    public setCanProvideLiquidity(canProvide: boolean): void {
         this.ensureValues();
-        if (this.pendingReservationsFlag != flag) {
-            this.pendingReservationsFlag = flag;
+        if (this.canProvide != (canProvide ? 1 : 0)) {
+            this.canProvide = canProvide ? 1 : 0;
             this.isChanged = true;
         }
     }
@@ -172,6 +190,11 @@ export class UserLiquidity {
             Blockchain.setStorageAt(this.u256Pointer, packed);
             this.isChanged = false;
         }
+
+        if (this.liquidityChanged) {
+            Blockchain.setStorageAt(this.liquidityPointer, this.liquidityProvided);
+            this.liquidityChanged = false;
+        }
     }
 
     /**
@@ -181,11 +204,41 @@ export class UserLiquidity {
     @inline
     public reset(): void {
         this.activeFlag = 0;
-        this.pendingReservationsFlag = 0;
         this.priorityFlag = 0;
+        this.canProvide = 0;
         this.liquidityAmount = u128.Zero;
         this.reservedAmount = u128.Zero;
         this.isChanged = true;
+    }
+
+    @inline
+    public isLp(): boolean {
+        this.ensureValues();
+        return this.isLiquidityProvider == 1;
+    }
+
+    @inline
+    public setIsLp(isLp: boolean): void {
+        this.ensureValues();
+        if (this.isLiquidityProvider != (isLp ? 1 : 0)) {
+            this.isLiquidityProvider = isLp ? 1 : 0;
+            this.isChanged = true;
+        }
+    }
+
+    @inline
+    public getLiquidityProvided(): u256 {
+        this.ensureLoadedLiquidity();
+        return this.liquidityProvided;
+    }
+
+    @inline
+    public setLiquidityProvided(liquidityProvided: u256): void {
+        this.ensureLoadedLiquidity();
+        if (!u256.eq(this.liquidityProvided, liquidityProvided)) {
+            this.liquidityProvided = liquidityProvided;
+            this.liquidityChanged = true;
+        }
     }
 
     /**
@@ -196,7 +249,7 @@ export class UserLiquidity {
     @inline
     public toString(): string {
         this.ensureValues();
-        return `ActiveFlag: ${this.activeFlag}, PendingReservationsFlag: ${this.pendingReservationsFlag}, LiquidityAmount: ${this.liquidityAmount.toString()}, ReservedAmount: ${this.reservedAmount.toString()}`;
+        return `ActiveFlag: ${this.activeFlag}, LiquidityAmount: ${this.liquidityAmount.toString()}, ReservedAmount: ${this.reservedAmount.toString()}`;
     }
 
     /**
@@ -209,6 +262,13 @@ export class UserLiquidity {
         this.ensureValues();
         const packed = this.packValues();
         return packed.toBytes();
+    }
+
+    private ensureLoadedLiquidity(): void {
+        if (!this.isLoadedProvider) {
+            this.liquidityProvided = Blockchain.getStorageAt(this.liquidityPointer, u256.Zero);
+            this.isLoadedProvider = true;
+        }
     }
 
     /**
@@ -224,8 +284,10 @@ export class UserLiquidity {
             const flag = reader.readU8();
 
             this.activeFlag = flag & 0b1;
-            this.pendingReservationsFlag = (flag >> 1) & 0b1;
-            this.priorityFlag = (flag >> 2) & 0b1;
+            this.priorityFlag = (flag >> 1) & 0b1;
+            this.canProvide = (flag >> 2) & 0b1;
+            this.isLiquidityProvider = (flag >> 3) & 0b1;
+            this.isPendingRemoval = (flag >> 4) & 0b1;
 
             // Unpack liquidityAmount (16 bytes, little endian)
             this.liquidityAmount = reader.readU128();
@@ -251,7 +313,11 @@ export class UserLiquidity {
     private packValues(): u256 {
         const writer = new BytesWriter(32);
         const flag: u8 =
-            (this.pendingReservationsFlag << 1) | this.activeFlag | (this.priorityFlag << 2);
+            this.activeFlag |
+            (this.priorityFlag << 1) |
+            (this.canProvide << 2) |
+            (this.isLiquidityProvider << 3) |
+            (this.isPendingRemoval << 4);
 
         writer.writeU8(flag);
 

@@ -11,8 +11,11 @@ import {
 export class UserReservation {
     private readonly u256Pointer: u256;
 
+    private reservedLP: u8 = 0;
+
     private expirationBlock: u64 = 0;
     private priorityIndex: u64 = 0;
+    private userTimeoutBlockExpiration: u64 = 0;
 
     // Flags to manage state
     private isLoaded: bool = false;
@@ -31,6 +34,20 @@ export class UserReservation {
         writer.writeU256(subPointer);
 
         this.u256Pointer = encodePointer(pointer, writer.getBuffer());
+    }
+
+    public get reservedForLiquidityPool(): bool {
+        this.ensureValues();
+        return this.reservedLP == 1;
+    }
+
+    public set reservedForLiquidityPool(value: bool) {
+        this.ensureValues();
+
+        if (this.reservedLP != (value ? 1 : 0)) {
+            this.reservedLP = value ? 1 : 0;
+            this.isChanged = true;
+        }
     }
 
     /**
@@ -59,6 +76,31 @@ export class UserReservation {
     }
 
     /**
+     * @method getUserTimeoutBlockExpiration
+     * @description Retrieves the user timeout if any.
+     * @returns {u64} - The user timeout block expiration.
+     */
+    @inline
+    public getUserTimeoutBlockExpiration(): u64 {
+        this.ensureValues();
+        return this.userTimeoutBlockExpiration;
+    }
+
+    /**
+     * @method setUserTimeoutBlockExpiration
+     * @description Sets the user timeout block expiration.
+     * @param block - The user timeout block expiration to set.
+     */
+    @inline
+    public setUserTimeoutBlockExpiration(block: u64): void {
+        this.ensureValues();
+        if (this.userTimeoutBlockExpiration != block) {
+            this.userTimeoutBlockExpiration = block;
+            this.isChanged = true;
+        }
+    }
+
+    /**
      * @method save
      * @description Persists the cached values to storage if any have been modified.
      */
@@ -77,6 +119,8 @@ export class UserReservation {
     @inline
     public reset(): void {
         this.expirationBlock = 0;
+        this.priorityIndex = 0;
+        this.reservedLP = 0;
         this.isChanged = true;
     }
 
@@ -103,6 +147,15 @@ export class UserReservation {
         return packed.toBytes();
     }
 
+    private unpackFlags(flag: u8): void {
+        this.reservedLP = flag & 0b1;
+        // (flag >> 1) & 0b1;
+    }
+
+    private packFlags(): u8 {
+        return this.reservedLP;
+    }
+
     /**
      * @private
      * @method ensureValues
@@ -113,13 +166,18 @@ export class UserReservation {
             const storedU256: u256 = Blockchain.getStorageAt(this.u256Pointer, u256.Zero);
             const reader = new BytesReader(storedU256.toUint8Array(true));
 
+            // Unpack flags (1 byte)
+            this.unpackFlags(reader.readU8());
+
             // Unpack expirationBlock (8 bytes, little endian)
             this.expirationBlock = reader.readU64();
 
             // Unpack priorityIndex (8 bytes, little endian)
             this.priorityIndex = reader.readU64();
 
-            // Skip remaining bytes (if any)
+            // Unpack userTimeoutBlockExpiration (8 bytes, little endian)
+            this.userTimeoutBlockExpiration = reader.readU64();
+
             this.isLoaded = true;
         }
     }
@@ -133,11 +191,17 @@ export class UserReservation {
     private packValues(): u256 {
         const writer = new BytesWriter(32);
 
+        // Pack flags (1 byte)
+        writer.writeU8(this.packFlags());
+
         // Pack expirationBlock (8 bytes, little endian)
         writer.writeU64(this.expirationBlock);
 
         // Pack priorityIndex (8 bytes, little endian)
         writer.writeU64(this.priorityIndex);
+
+        // Pack userTimeoutBlockExpiration (8 bytes, little endian)
+        writer.writeU64(this.userTimeoutBlockExpiration);
 
         return u256.fromBytes(writer.getBuffer(), true);
     }
