@@ -98,6 +98,7 @@ export class LiquidityQueue {
             tokenId,
             LiquidityQueue.STRICT_MINIMUM_PROVIDER_RESERVATION_AMOUNT,
         );
+
         this._quoteHistory = new StoredU256Array(
             LIQUIDITY_QUOTE_HISTORY_POINTER,
             tokenIdUint8Array,
@@ -751,6 +752,7 @@ export class LiquidityQueue {
     }
 
     public distributeFee(totalFee: u256): void {
+        // TODO: Add motoswap fee here
         this.virtualTokenReserve = SafeMath.add(this.virtualTokenReserve, totalFee);
 
         // If you want an 80/20 split:

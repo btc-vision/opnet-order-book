@@ -12,7 +12,7 @@ import { Reservation } from '../../Reservation';
 import { u256 } from '@btc-vision/as-bignum/assembly';
 
 export class SwapOperation extends BaseOperation {
-    constructor(liquidityQueue: LiquidityQueue) {
+    public constructor(liquidityQueue: LiquidityQueue) {
         super(liquidityQueue);
     }
 
