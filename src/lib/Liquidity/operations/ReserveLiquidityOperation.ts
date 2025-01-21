@@ -250,7 +250,9 @@ export class ReserveLiquidityOperation extends BaseOperation {
 
     private ensureReservationValid(reservation: Reservation): void {
         if (reservation.valid()) {
-            throw new Revert('Reservation already active');
+            throw new Revert(
+                'You already have an active reservation. Swap or wait for expiration before creating another',
+            );
         }
     }
 

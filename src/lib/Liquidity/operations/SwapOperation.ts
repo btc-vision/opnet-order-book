@@ -38,7 +38,6 @@ export class SwapOperation extends BaseOperation {
         }
 
         const buyer: Address = Blockchain.tx.sender;
-
         TransferHelper.safeTransfer(this.liquidityQueue.token, buyer, totalTokensPurchased);
 
         this.liquidityQueue.updateTotalReserved(totalTokensPurchased, false);
