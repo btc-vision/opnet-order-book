@@ -607,7 +607,6 @@ export class LiquidityQueue {
                 if (!leftover.isZero()) {
                     // Return leftover to the provider
                     provider.reserved = SafeMath.sub128(provider.reserved, leftover);
-                    provider.liquidity = SafeMath.add128(provider.liquidity, leftover);
 
                     // also reduce global totalReserved
                     this.updateTotalReserved(leftover.toU256(), false);
