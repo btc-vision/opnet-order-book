@@ -70,6 +70,7 @@ export class ReserveLiquidityOperation extends BaseOperation {
                 break;
             }
 
+            // THIS THROWS BECAUSE OF THE ISSUE IN getNextProviderWithLiquidity, we need to investigate
             if (provider.indexedAt === lastId) {
                 //Blockchain.log('Revert: Impossible state: repeated provider');
                 throw new Revert('Impossible state: repeated provider');
