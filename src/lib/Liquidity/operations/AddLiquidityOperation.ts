@@ -35,7 +35,6 @@ export class AddLiquidityOperation extends BaseOperation {
         ); // T
 
         const btcSpent = SafeMath.add(trade.totalSatoshisSpent, trade.totalRefundedBTC); // B
-
         this.ensurePurchaseMade(tokensBoughtFromQueue, btcSpent);
 
         // 3. Enforce 50/50 => The user must deposit exactly `tokensBoughtFromQueue` more tokens
@@ -74,11 +73,8 @@ export class AddLiquidityOperation extends BaseOperation {
         // 8. Mark the provider as an LP
         this.markProviderAsLPProvider(tokensBoughtFromQueue);
 
-        // 9. Reservation no longer needed
-        reservation.delete();
-
-        // 10. Clean up providers, recalc block quote
-        this.liquidityQueue.cleanUpQueuesAndSetNewQuote();
+        // 9. Clean up providers, recalc block quote
+        this.liquidityQueue.cleanUpQueues();
 
         this.emitLiquidityAddedEvent(tokensBoughtFromQueue, btcSpent);
     }

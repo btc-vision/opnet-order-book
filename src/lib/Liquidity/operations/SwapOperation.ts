@@ -46,7 +46,6 @@ export class SwapOperation extends BaseOperation {
         this.liquidityQueue.buyTokens(totalTokensPurchased, totalSatoshisSpent);
 
         // finalize
-        reservation.delete();
         this.liquidityQueue.cleanUpQueues();
 
         this.emitSwapExecutedEvent(buyer, totalSatoshisSpent, totalTokensPurchased);

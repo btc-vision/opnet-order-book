@@ -266,11 +266,6 @@ export class LiquidityQueue {
         this._providerManager.cleanUpQueues();
     }
 
-    public cleanUpQueuesAndSetNewQuote(): void {
-        this._providerManager.cleanUpQueues();
-        this.setBlockQuote();
-    }
-
     public resetProvider(provider: Provider, burnRemainingFunds: boolean = true): void {
         this._providerManager.resetProvider(provider, burnRemainingFunds);
     }
@@ -540,6 +535,7 @@ export class LiquidityQueue {
 
                 // Convert that sat amount to "token units" for the buyer
                 let tokensDesired = this.satoshisToTokens(actualSpent, quoteAtReservation);
+
                 // clamp by 'reservedAmount'
                 tokensDesired = SafeMath.min(tokensDesired, reservedAmount.toU256());
 
@@ -555,6 +551,22 @@ export class LiquidityQueue {
 
                     this.setBTCowedReserved(provider.providerId, newReserved);
                     continue;
+                } else {
+                    // Handle the left over.
+                    const leftover = SafeMath.sub128(reservedAmount, tokensDesired.toU128());
+                    if (!leftover.isZero()) {
+                        // un-reserve leftover from _lpBTCowedReserved
+                        const costInSatsLeftover = this.tokensToSatoshis(
+                            leftover.toU256(),
+                            quoteAtReservation,
+                        );
+
+                        // clamp by owedReserved
+                        const owedReserved = this.getBTCowedReserved(provider.providerId);
+                        const revertSats = SafeMath.min(costInSatsLeftover, owedReserved);
+                        const newOwedReserved = SafeMath.sub(owedReserved, revertSats);
+                        this.setBTCowedReserved(provider.providerId, newOwedReserved);
+                    }
                 }
 
                 // final: remove from _lpBTCowedReserved
@@ -585,13 +597,23 @@ export class LiquidityQueue {
                 tokensDesired = SafeMath.min(tokensDesired, reservedAmount.toU256());
                 tokensDesired = SafeMath.min(tokensDesired, provider.liquidity.toU256());
 
-                satoshisSent = this.tokensToSatoshis(tokensDesired, quoteAtReservation);
-
                 if (tokensDesired.isZero()) {
-                    // If mismatch or too little => restore
                     this.restoreReservedLiquidityForProvider(provider, reservedAmount);
                     continue;
                 }
+
+                // Left over management.
+                const leftover = SafeMath.sub128(reservedAmount, tokensDesired.toU128());
+                if (!leftover.isZero()) {
+                    // Return leftover to the provider
+                    provider.reserved = SafeMath.sub128(provider.reserved, leftover);
+                    provider.liquidity = SafeMath.add128(provider.liquidity, leftover);
+
+                    // also reduce global totalReserved
+                    this.updateTotalReserved(leftover.toU256(), false);
+                }
+
+                satoshisSent = this.tokensToSatoshis(tokensDesired, quoteAtReservation);
 
                 // 6b. Deduct from the provider
                 const tokensDesiredU128 = tokensDesired.toU128();
@@ -644,6 +666,9 @@ export class LiquidityQueue {
         ) {
             throw new Revert('No tokens purchased. Did you send BTC to the provider addresses?');
         }
+
+        // Always clean up the reservation
+        reservation.delete();
 
         // 8) Return summary
         return new CompletedTrade(
