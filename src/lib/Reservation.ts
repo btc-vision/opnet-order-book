@@ -76,8 +76,8 @@ export class Reservation {
 
     public static generateId(token: Address, owner: Address): Uint8Array {
         const writer = new BytesWriter(ADDRESS_BYTE_LENGTH * 2);
-        writer.writeAddress(owner);
         writer.writeAddress(token);
+        writer.writeAddress(owner);
 
         // only use the first 16 bytes (fit 128 bits)
         // this is a design choice. the odds that two ACTIVE reservations have the same ID is 1 in 2^128
@@ -117,7 +117,7 @@ export class Reservation {
         this.reservedValues.reset();
         this.reservedPriority.reset();
         this.userReservation.reset();
-        
+
         this.save();
     }
 

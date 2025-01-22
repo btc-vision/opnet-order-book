@@ -38,7 +38,6 @@ export class SwapOperation extends BaseOperation {
         }
 
         const buyer: Address = Blockchain.tx.sender;
-
         TransferHelper.safeTransfer(this.liquidityQueue.token, buyer, totalTokensPurchased);
 
         this.liquidityQueue.updateTotalReserved(totalTokensPurchased, false);
@@ -47,7 +46,6 @@ export class SwapOperation extends BaseOperation {
         this.liquidityQueue.buyTokens(totalTokensPurchased, totalSatoshisSpent);
 
         // finalize
-        reservation.delete();
         this.liquidityQueue.cleanUpQueues();
 
         this.emitSwapExecutedEvent(buyer, totalSatoshisSpent, totalTokensPurchased);
