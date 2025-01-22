@@ -5,9 +5,9 @@ import { Blockchain } from '@btc-vision/btc-runtime/runtime';
 import { ListTokensForSaleOperation } from './ListTokensForSaleOperation';
 
 export class CreatePoolOperation extends BaseOperation {
-    private readonly floorPrice: u256;
+    private readonly floorPrice: u256; // Number of token per satoshi
     private readonly providerId: u256;
-    private readonly initialLiquidity: u128;
+    private readonly initialLiquidity: u128; // Number of token
     private readonly receiver: string;
     private readonly antiBotEnabledFor: u16;
     private readonly antiBotMaximumTokensPerReservation: u256;

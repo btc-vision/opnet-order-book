@@ -26,6 +26,7 @@ import { ListTokensForSaleOperation } from '../lib/Liquidity/operations/ListToke
 import { ReserveLiquidityOperation } from '../lib/Liquidity/operations/ReserveLiquidityOperation';
 import { CancelListingOperation } from '../lib/Liquidity/operations/CancelListingOperation';
 import { SwapOperation } from '../lib/Liquidity/operations/SwapOperation';
+import { SELECTOR_BYTE_LENGTH } from '@btc-vision/btc-runtime/runtime/utils/lengths';
 
 /**
  * OrderBook contract for the OP_NET order book system,
@@ -199,11 +200,13 @@ export class NativeSwap extends OP_NET {
         const amount = calldata.readU256();
         const token: Address = calldata.readAddress();
 
-        const calldataSend = new BytesWriter(64 + ADDRESS_BYTE_LENGTH + U256_BYTE_LENGTH + 4);
+        const calldataSend = new BytesWriter(
+            68 + ADDRESS_BYTE_LENGTH + U256_BYTE_LENGTH + SELECTOR_BYTE_LENGTH,
+        );
         calldataSend.writeSelector(NativeSwap.APPROVE_FROM_SELECTOR);
         calldataSend.writeAddress(this.address);
         calldataSend.writeU256(amount);
-        calldataSend.writeBytes(signature);
+        calldataSend.writeBytesWithLength(signature);
 
         Blockchain.call(token, calldataSend);
 
@@ -228,9 +231,8 @@ export class NativeSwap extends OP_NET {
         this.ensureAntibotSettingsValid(antiBotEnabledFor, antiBotMaximumTokensPerReservation);
 
         const queue = this.getLiquidityQueue(token, this.addressToPointer(token), true);
-        if (!queue.p0.isZero()) {
-            throw new Revert('Base quote already set');
-        }
+
+        this.ensureBaseQuoteNotAlreadySet(queue.p0);
 
         const providerId = this.addressToPointerU256(Blockchain.tx.sender, token);
         const operation = new CreatePoolOperation(
@@ -405,6 +407,7 @@ export class NativeSwap extends OP_NET {
     private getQuote(calldata: Calldata): BytesWriter {
         const token: Address = calldata.readAddress();
         const satoshisIn: u256 = calldata.readU256();
+
         return this._getQuote(token, satoshisIn);
     }
 
@@ -557,6 +560,12 @@ export class NativeSwap extends OP_NET {
     private ensureValidSignatureLength(signature: Uint8Array): void {
         if (signature.length !== 64) {
             throw new Revert('NATIVE_SWAP: Invalid signature length');
+        }
+    }
+
+    private ensureBaseQuoteNotAlreadySet(p0: u256): void {
+        if (!p0.isZero()) {
+            throw new Revert('Base quote already set');
         }
     }
 }
