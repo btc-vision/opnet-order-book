@@ -346,7 +346,7 @@ export class LiquidityQueue {
     public initializeInitialLiquidity(
         floorPrice: u256,
         providerId: u256,
-        initialLiquidity: u256,
+        initialLiquidity: u256, //!!!! JFB Pourquoi u256 et pas u128???
         maxReserves5BlockPercent: u64,
     ): void {
         this.p0 = floorPrice;
@@ -382,6 +382,15 @@ export class LiquidityQueue {
         let B = this.virtualBTCReserve;
         let T = this.virtualTokenReserve;
 
+        Blockchain.log(`##############`);
+        Blockchain.log(`update pool`);
+        Blockchain.log(`Initial B: ${B}`);
+        Blockchain.log(`Initial T: ${T}`);
+        Blockchain.log(`deltaTokensAdd: ${this.deltaTokensAdd}`);
+        Blockchain.log(`deltaBTCBuy: ${this.deltaBTCBuy}`);
+        Blockchain.log(`deltaTokensBuy: ${this.deltaTokensBuy}`);
+        Blockchain.log(`deltaTokensSell: ${this.deltaTokensSell}`);
+
         // Add tokens from deltaTokensAdd
         const dT_add = this.deltaTokensAdd;
         if (!dT_add.isZero()) {
@@ -395,14 +404,19 @@ export class LiquidityQueue {
         if (!dT_buy.isZero()) {
             let Tprime: u256;
             if (u256.ge(dT_buy, T)) {
-                Tprime = u256.One;
+                Tprime = u256.One; //!!!! JFB Pourquoi???
             } else {
                 Tprime = SafeMath.sub(T, dT_buy);
             }
 
+            Blockchain.log(`T prime: ${Tprime}`);
+
             const numerator = SafeMath.mul(B, T);
             let Bprime = SafeMath.div(numerator, Tprime);
             const incB = SafeMath.sub(Bprime, B);
+
+            Blockchain.log(`B prime: ${Bprime}`);
+            Blockchain.log(`incB prime: ${incB}`);
 
             if (u256.gt(incB, dB_buy)) {
                 Bprime = SafeMath.add(B, dB_buy);
@@ -416,6 +430,9 @@ export class LiquidityQueue {
                     newTprime = u256.One;
                 }
                 Tprime = newTprime;
+
+                Blockchain.log(`new B prime: ${Bprime}`);
+                Blockchain.log(`new T prime: ${newTprime}`);
             }
             B = Bprime;
             T = Tprime;
@@ -435,8 +452,12 @@ export class LiquidityQueue {
         }
 
         if (u256.lt(T, u256.One)) {
+            //!!!! JFB Pourquoi???
             T = u256.One;
         }
+
+        Blockchain.log(`New B: ${B}`);
+        Blockchain.log(`New T: ${T}`);
 
         this.virtualBTCReserve = B;
         this.virtualTokenReserve = T;
@@ -454,6 +475,7 @@ export class LiquidityQueue {
         );
 
         this.lastVirtualUpdateBlock = currentBlock;
+        Blockchain.log(`##############`);
     }
 
     public getUtilizationRatio(): u256 {

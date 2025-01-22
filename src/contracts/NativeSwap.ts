@@ -219,7 +219,7 @@ export class NativeSwap extends OP_NET {
         this.ensureContractDeployer(tokenOwner);
 
         const floorPrice: u256 = calldata.readU256();
-        const initialLiquidity: u128 = calldata.readU128();
+        const initialLiquidity: u128 = calldata.readU128(); //!!!! Pourquoi u128 et pas u256
         const receiver: string = calldata.readStringWithLength();
         const antiBotEnabledFor: u16 = calldata.readU16();
         const antiBotMaximumTokensPerReservation: u256 = calldata.readU256();
@@ -396,6 +396,8 @@ export class NativeSwap extends OP_NET {
 
         const queue = this.getLiquidityQueue(token, this.addressToPointer(token), true);
 
+        this.ensurePoolExistsForToken(queue);
+        
         const result = new BytesWriter(128);
         result.writeU256(queue.liquidity);
         result.writeU256(queue.reservedLiquidity);
@@ -430,6 +432,8 @@ export class NativeSwap extends OP_NET {
             this.addressToPointer(token),
             true,
         );
+
+        this.ensurePoolExistsForToken(queue);
 
         const price: u256 = queue.quote();
         this.ensurePriceNotZeroAndLiquidity(price);
@@ -522,6 +526,12 @@ export class NativeSwap extends OP_NET {
     private ensureValidTokenAddress(token: Address): void {
         if (token.empty() || token.equals(Blockchain.DEAD_ADDRESS)) {
             throw new Revert('NATIVE_SWAP: Invalid token address');
+        }
+    }
+
+    private ensurePoolExistsForToken(queue: LiquidityQueue): void {
+        if (queue.p0.isZero()) {
+            throw new Revert('NATIVE_SWAP: No pool exists for token.');
         }
     }
 
