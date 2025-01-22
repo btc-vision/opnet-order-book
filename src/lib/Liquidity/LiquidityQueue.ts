@@ -317,6 +317,7 @@ export class LiquidityQueue {
         return SafeMath.sub128(amountIn, tokensForPriorityQueue);
     }
 
+    // Return number of token per satoshi
     public quote(): u256 {
         const T: u256 = this.virtualTokenReserve;
         if (T.isZero()) {
