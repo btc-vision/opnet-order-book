@@ -55,6 +55,7 @@ export class ReserveLiquidityOperation extends BaseOperation {
         // We'll loop over providers while tokensRemaining > 0
         //Blockchain.log('Starting reservation loop');
         while (!tokensRemaining.isZero()) {
+            // TODO: Fix issue inside of getNextProviderWithLiquidity.
             const provider = this.liquidityQueue.getNextProviderWithLiquidity();
             if (provider === null) {
                 //Blockchain.log(
