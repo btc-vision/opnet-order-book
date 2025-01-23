@@ -70,6 +70,10 @@ export class ReserveLiquidityOperation extends BaseOperation {
                 break;
             }
 
+            Blockchain.log(
+                `Attempting to reserve liquidity from provider ${provider.providerId}, indexed at ${provider.indexedAt}. Provider has ${provider.liquidity} and ${provider.reserved} reserved. Possible to reserve ${SafeMath.sub128(provider.liquidity, provider.reserved)} tokens.`,
+            );
+
             // THIS THROWS BECAUSE OF THE ISSUE IN getNextProviderWithLiquidity, we need to investigate
             if (provider.indexedAt === lastId) {
                 //Blockchain.log('Revert: Impossible state: repeated provider');
