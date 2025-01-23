@@ -314,6 +314,7 @@ export class LiquidityQueue {
 
     // Return number of token per satoshi
     public quote(): u256 {
+        //!!! TODO: Scale up
         const T: u256 = this.virtualTokenReserve;
         if (T.isZero()) {
             return u256.Zero;
@@ -341,7 +342,7 @@ export class LiquidityQueue {
     public initializeInitialLiquidity(
         floorPrice: u256,
         providerId: u256,
-        initialLiquidity: u256, //!!!! JFB Pourquoi u256 et pas u128???
+        initialLiquidity: u256,
         maxReserves5BlockPercent: u64,
     ): void {
         this.p0 = floorPrice;
@@ -377,7 +378,7 @@ export class LiquidityQueue {
         let B = this.virtualBTCReserve;
         let T = this.virtualTokenReserve;
 
-        Blockchain.log(`##############`);
+        /*Blockchain.log(`##############`);
         Blockchain.log(`update pool`);
         Blockchain.log(`Initial B: ${B}`);
         Blockchain.log(`Initial T: ${T}`);
@@ -385,6 +386,7 @@ export class LiquidityQueue {
         Blockchain.log(`deltaBTCBuy: ${this.deltaBTCBuy}`);
         Blockchain.log(`deltaTokensBuy: ${this.deltaTokensBuy}`);
         Blockchain.log(`deltaTokensSell: ${this.deltaTokensSell}`);
+        */
 
         // Add tokens from deltaTokensAdd
         const dT_add = this.deltaTokensAdd;
@@ -399,19 +401,19 @@ export class LiquidityQueue {
         if (!dT_buy.isZero()) {
             let Tprime: u256;
             if (u256.ge(dT_buy, T)) {
-                Tprime = u256.One; //!!!! JFB Pourquoi???
+                Tprime = u256.One; //!!!! JFB Why??? Check
             } else {
                 Tprime = SafeMath.sub(T, dT_buy);
             }
 
-            Blockchain.log(`T prime: ${Tprime}`);
+            /*Blockchain.log(`T prime: ${Tprime}`);*/
 
             const numerator = SafeMath.mul(B, T);
             let Bprime = SafeMath.div(numerator, Tprime);
             const incB = SafeMath.sub(Bprime, B);
 
-            Blockchain.log(`B prime: ${Bprime}`);
-            Blockchain.log(`incB prime: ${incB}`);
+            /*Blockchain.log(`B prime: ${Bprime}`);
+            Blockchain.log(`incB prime: ${incB}`);*/
 
             if (u256.gt(incB, dB_buy)) {
                 Bprime = SafeMath.add(B, dB_buy);
@@ -426,8 +428,8 @@ export class LiquidityQueue {
                 }
                 Tprime = newTprime;
 
-                Blockchain.log(`new B prime: ${Bprime}`);
-                Blockchain.log(`new T prime: ${newTprime}`);
+                /*Blockchain.log(`new B prime: ${Bprime}`);
+                Blockchain.log(`new T prime: ${newTprime}`);*/
             }
             B = Bprime;
             T = Tprime;
@@ -447,12 +449,11 @@ export class LiquidityQueue {
         }
 
         if (u256.lt(T, u256.One)) {
-            //!!!! JFB Pourquoi???
             T = u256.One;
         }
 
-        Blockchain.log(`New B: ${B}`);
-        Blockchain.log(`New T: ${T}`);
+        /*Blockchain.log(`New B: ${B}`);
+        Blockchain.log(`New T: ${T}`);*/
 
         this.virtualBTCReserve = B;
         this.virtualTokenReserve = T;
@@ -470,7 +471,7 @@ export class LiquidityQueue {
         );
 
         this.lastVirtualUpdateBlock = currentBlock;
-        Blockchain.log(`##############`);
+        /*Blockchain.log(`##############`);*/
     }
 
     public getUtilizationRatio(): u256 {
@@ -1009,10 +1010,10 @@ export class LiquidityQueue {
         this._totalReserved.set(this.tokenId, newReserved);
     }
 
-    public distributeFee(totalFee: u256): void {
-        // TODO: Add motoswap fee here
-        this.virtualTokenReserve = SafeMath.add(this.virtualTokenReserve, totalFee);
-
+    public distributeFee(_totalFee: u256): void {
+        // !!!!TODO: Add motoswap fee here
+        // if sending token to someone else, we need to call updateTotalReserve
+        // this.virtualTokenReserve = SafeMath.add(this.virtualTokenReserve, totalFee);
         // If you want an 80/20 split:
         // const feeLP = SafeMath.div(SafeMath.mul(totalFee, u256.fromU64(80)), u256.fromU64(100));
         // const feeMoto = SafeMath.sub(totalFee, feeLP);

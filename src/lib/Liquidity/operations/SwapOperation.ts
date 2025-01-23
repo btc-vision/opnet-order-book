@@ -22,10 +22,15 @@ export class SwapOperation extends BaseOperation {
 
         const trade = this.liquidityQueue.executeTrade(reservation);
 
+        /*Blockchain.log(`totalTokensPurchased: ${trade.totalTokensPurchased}`);
+        Blockchain.log(`totalTokensRefunded: ${trade.totalTokensRefunded}`);*/
+
         let totalTokensPurchased = SafeMath.add(
             trade.totalTokensPurchased,
             trade.totalTokensRefunded,
         );
+
+        const totalTokensPurchasedBeforeFees = totalTokensPurchased.clone();
 
         const totalSatoshisSpent = SafeMath.add(trade.totalSatoshisSpent, trade.totalRefundedBTC);
         if (this.liquidityQueue.feesEnabled) {
@@ -35,13 +40,16 @@ export class SwapOperation extends BaseOperation {
             );
             totalTokensPurchased = SafeMath.sub(totalTokensPurchased, totalFeeTokens);
             this.liquidityQueue.distributeFee(totalFeeTokens);
+
+            /*Blockchain.log(`totalTokensPurchased after fees: ${totalTokensPurchased}`);
+            Blockchain.log(`totalFeeTokens: ${totalFeeTokens}`);*/
         }
+
+        this.liquidityQueue.updateTotalReserved(totalTokensPurchasedBeforeFees, false);
+        this.liquidityQueue.updateTotalReserve(totalTokensPurchased, false);
 
         const buyer: Address = Blockchain.tx.sender;
         TransferHelper.safeTransfer(this.liquidityQueue.token, buyer, totalTokensPurchased);
-
-        this.liquidityQueue.updateTotalReserved(totalTokensPurchased, false);
-        this.liquidityQueue.updateTotalReserve(totalTokensPurchased, false);
 
         this.liquidityQueue.buyTokens(totalTokensPurchased, totalSatoshisSpent);
 

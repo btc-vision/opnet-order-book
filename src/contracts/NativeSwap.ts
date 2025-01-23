@@ -219,7 +219,7 @@ export class NativeSwap extends OP_NET {
         this.ensureContractDeployer(tokenOwner);
 
         const floorPrice: u256 = calldata.readU256();
-        const initialLiquidity: u128 = calldata.readU128(); //!!!! Pourquoi u128 et pas u256
+        const initialLiquidity: u128 = calldata.readU128();
         const receiver: string = calldata.readStringWithLength();
         const antiBotEnabledFor: u16 = calldata.readU16();
         const antiBotMaximumTokensPerReservation: u256 = calldata.readU256();
@@ -397,7 +397,7 @@ export class NativeSwap extends OP_NET {
         const queue = this.getLiquidityQueue(token, this.addressToPointer(token), true);
 
         this.ensurePoolExistsForToken(queue);
-        
+
         const result = new BytesWriter(128);
         result.writeU256(queue.liquidity);
         result.writeU256(queue.reservedLiquidity);
