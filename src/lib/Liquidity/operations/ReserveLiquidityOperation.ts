@@ -33,8 +33,7 @@ export class ReserveLiquidityOperation extends BaseOperation {
 
     public execute(): void {
         if (u256.eq(this.providerId, this.liquidityQueue.initialLiquidityProvider)) {
-            //Blockchain.log('Revert: Cannot reserve initial liquidity provider');
-            throw new Revert('Cannot reserve initial liquidity provider');
+            throw new Revert('You may not reserve your own liquidity');
         }
 
         const reservation = new Reservation(this.buyer, this.liquidityQueue.token);
@@ -50,33 +49,35 @@ export class ReserveLiquidityOperation extends BaseOperation {
 
         let tokensReserved: u256 = u256.Zero;
         let satSpent: u256 = u256.Zero;
-        let lastId: u64 = 0;
+        let lastId: u64 = <u64>u32.MAX_VALUE + <u64>1; // Impossible value
 
         // We'll loop over providers while tokensRemaining > 0
-        //Blockchain.log('Starting reservation loop');
+        let i: u32 = 0;
         while (!tokensRemaining.isZero()) {
             // TODO: Fix issue inside of getNextProviderWithLiquidity.
             const provider = this.liquidityQueue.getNextProviderWithLiquidity();
             if (provider === null) {
-                //Blockchain.log(
-                //    'No more providers in queue but tokensRemaining > 0. Breaking loop.',
-                //);
                 break;
             }
 
             // If we see repeated MAX_VALUE => break
             if (provider.indexedAt === u32.MAX_VALUE && lastId === u32.MAX_VALUE) {
-                //Blockchain.log('Provider indexedAt = MAX_VALUE was repeated => break loop.');
                 break;
             }
 
+            Blockchain.log(
+                `Attempting to reserve liquidity from provider, indexed at ${provider.indexedAt}. Provider has ${provider.liquidity} and ${provider.reserved} reserved. Possible to reserve ${SafeMath.sub128(provider.liquidity, provider.reserved)} tokens.`,
+            );
+
             // THIS THROWS BECAUSE OF THE ISSUE IN getNextProviderWithLiquidity, we need to investigate
             if (provider.indexedAt === lastId) {
-                //Blockchain.log('Revert: Impossible state: repeated provider');
-                throw new Revert('Impossible state: repeated provider');
+                throw new Revert(
+                    `Impossible state: repeated provider, ${provider.indexedAt} === ${lastId}, i=${i}`,
+                );
             }
 
             lastId = provider.indexedAt;
+            i++;
 
             // CASE A: REMOVAL-QUEUE PROVIDER
             if (provider.pendingRemoval && provider.isLp && provider.fromRemovalQueue) {

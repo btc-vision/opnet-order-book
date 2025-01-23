@@ -1162,7 +1162,7 @@ export class LiquidityQueue {
                         u256.Zero,
                     ),
                 );
-                reservation.delete();
+                //reservation.delete();
             }
 
             reservationList.deleteAll();

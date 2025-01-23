@@ -188,10 +188,12 @@ export class ProviderManager {
                 this.currentIndex++;
                 continue;
             }
+
             if (provider.isPriority()) {
                 this.currentIndex++;
                 continue;
             }
+
             if (u128.lt(provider.liquidity, provider.reserved)) {
                 throw new Revert(
                     `Impossible state: liquidity < reserved for provider ${providerId}.`,
