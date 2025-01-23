@@ -4,7 +4,9 @@
     "description": "Native swap contract for OP_NET",
     "main": "index.js",
     "scripts": {
-        "build": "asc src/index.ts --target release --measure --uncheckedBehavior never"
+        "build": "asc src/index.ts --target release --measure --uncheckedBehavior never",
+        "test": "asp --config as-pect.config.js --verbose --no-logo",
+        "test:ci": "asp --config as-pect.config.js --summary --no-logo"
     },
     "author": "MotoSwap",
     "license": "MIT",
@@ -26,6 +28,7 @@
     "homepage": "https://opnet.org",
     "type": "module",
     "dependencies": {
+        "@as-pect/cli": "^8.1.0",
         "@assemblyscript/loader": "^0.27.31",
         "@btc-vision/as-bignum": "^0.0.3",
         "@btc-vision/btc-runtime": "^1.4.5",
