@@ -54,7 +54,7 @@ export class ReserveLiquidityOperation extends BaseOperation {
         // We'll loop over providers while tokensRemaining > 0
         let i: u32 = 0;
         while (!tokensRemaining.isZero()) {
-            // TODO: Fix issue inside of getNextProviderWithLiquidity.
+            // TODO: !!!! Fix issue inside of getNextProviderWithLiquidity.
             const provider = this.liquidityQueue.getNextProviderWithLiquidity();
             if (provider === null) {
                 break;
@@ -69,7 +69,7 @@ export class ReserveLiquidityOperation extends BaseOperation {
                 `Attempting to reserve liquidity from provider, indexed at ${provider.indexedAt}. Provider has ${provider.liquidity} and ${provider.reserved} reserved. Possible to reserve ${SafeMath.sub128(provider.liquidity, provider.reserved)} tokens.`,
             );
 
-            // THIS THROWS BECAUSE OF THE ISSUE IN getNextProviderWithLiquidity, we need to investigate
+            // TODO: !!!! THROWS BECAUSE OF THE ISSUE IN getNextProviderWithLiquidity, we need to investigate
             if (provider.indexedAt === lastId) {
                 throw new Revert(
                     `Impossible state: repeated provider, ${provider.indexedAt} === ${lastId}, i=${i}`,

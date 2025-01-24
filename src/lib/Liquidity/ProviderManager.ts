@@ -160,6 +160,7 @@ export class ProviderManager {
             return priorityProvider;
         }
 
+        // 3. Then normal queue
         let provider: Potential<Provider> = null;
         let providerId: u256;
 

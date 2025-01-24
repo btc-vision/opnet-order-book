@@ -315,12 +315,15 @@ export class NativeSwap extends OP_NET {
         this.ensureMaximumAmountInNotZero(maximumAmountIn);
         this.ensureMaximumAmountInNotBelowTradeSize(maximumAmountIn);
 
+        const providerId = this.addressToPointerU256(Blockchain.tx.sender, token);
+        const queue = this.getLiquidityQueue(token, this.addressToPointer(token), true);
+        this.ensurePoolExistsForToken(queue);
+
         const totalFee = getTotalFeeCollected();
         this.ensureSufficientFeesCollected(totalFee);
 
         const buyer: Address = Blockchain.tx.sender;
-        const providerId = this.addressToPointerU256(Blockchain.tx.sender, token);
-        const queue = this.getLiquidityQueue(token, this.addressToPointer(token), true);
+
         const operation = new ReserveLiquidityOperation(
             queue,
             providerId,
