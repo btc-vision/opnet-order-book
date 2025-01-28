@@ -275,7 +275,7 @@ describe('Test provider creation', () => {
         expect(provider.liquidityProvided).toStrictEqual(u256.Zero);
         expect(provider.liquidity).toStrictEqual(u128.Zero);
         expect(provider.reserved).toStrictEqual(u128.Zero);
-        expect(provider.btcReceiver).toStrictEqual('');
+        expect(provider.btcReceiver).toStrictEqual('e123e2d23d233');
         expect(provider.canProvideLiquidity()).toStrictEqual(false);
         expect(provider.isActive()).toStrictEqual(false);
         expect(provider.isPriority()).toStrictEqual(false);
@@ -300,6 +300,7 @@ describe('Test provider creation', () => {
 
         const provider2: Provider2 = getProvider(providerId);
 
+        expect(provider2).toStrictEqual(provider);
         expect(provider2.pendingRemoval).toStrictEqual(true);
         expect(provider.isLp).toStrictEqual(true);
         expect(provider.liquidityProvided).toStrictEqual(u256.fromU64(129292));
@@ -331,11 +332,11 @@ describe('Test provider creation', () => {
         saveAllProviders();
         clearCachedProviders();
         const cacheLength: number = getProviderCacheLength();
-        log(cacheLength);
         expect(cacheLength).toStrictEqual(0);
 
         const provider2: Provider2 = getProvider(providerId);
 
+        expect(provider2).not.toStrictEqual(provider);
         expect(provider2.pendingRemoval).toStrictEqual(true);
         expect(provider.isLp).toStrictEqual(true);
         expect(provider.liquidityProvided).toStrictEqual(u256.fromU64(129292));
