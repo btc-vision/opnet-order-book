@@ -7,8 +7,8 @@ import {
     StoredU256,
     StoredU256Array,
     StoredU64,
-    TransferHelper,
 } from '@btc-vision/btc-runtime/runtime';
+import { StoredMapU256 } from '../../stored/StoredMapU256';
 import {
     INITIAL_LIQUIDITY,
     LIQUIDITY_PRIORITY_QUEUE_POINTER,
@@ -18,10 +18,9 @@ import {
     REMOVAL_QUEUE_POINTER,
     STARTING_INDEX_POINTER,
 } from '../StoredPointers';
-import { getProvider, Provider } from '../Provider';
-import { StoredMapU256 } from '../../stored/StoredMapU256';
+import { getProvider, Provider2 } from '../Provider2';
 
-export class ProviderManager {
+export class ProviderManager2 {
     private readonly _queue: StoredU256Array;
     private readonly _priorityQueue: StoredU256Array;
     private readonly _removalQueue: StoredU256Array;
@@ -146,7 +145,7 @@ export class ProviderManager {
         this.cleanUpRemovalQueue();
     }
 
-    public getNextProviderWithLiquidity(): Provider | null {
+    public getNextProviderWithLiquidity(): Provider2 | null {
         // 1. Removal queue first
         const removalProvider = this.getNextRemovalQueueProvider();
         if (removalProvider !== null) {
@@ -160,7 +159,7 @@ export class ProviderManager {
         }
 
         // 3. Then normal queue
-        let provider: Potential<Provider> = null;
+        let provider: Potential<Provider2> = null;
         let providerId: u256;
 
         const length: u64 = this._queue.getLength();
@@ -233,16 +232,16 @@ export class ProviderManager {
         return null;
     }
 
-    public removePendingLiquidityProviderFromRemovalQueue(provider: Provider, i: u64): void {
+    public removePendingLiquidityProviderFromRemovalQueue(provider: Provider2, i: u64): void {
         this._removalQueue.delete(i);
 
         provider.pendingRemoval = false;
         provider.isLp = false;
     }
 
-    public resetProvider(provider: Provider, burnRemainingFunds: boolean = true): void {
+    public resetProvider(provider: Provider2, burnRemainingFunds: boolean = true): void {
         if (burnRemainingFunds && !provider.liquidity.isZero()) {
-            TransferHelper.safeTransfer(this.token, Address.dead(), provider.liquidity.toU256());
+            //!!!!TransferHelper.safeTransfer(this.token, Address.dead(), provider.liquidity.toU256());
         }
 
         if (!u256.eq(provider.providerId, this._initialLiquidityProvider.value)) {
@@ -356,7 +355,7 @@ export class ProviderManager {
         this.previousReservationStandardStartingIndex = index;
     }
 
-    private getNextRemovalQueueProvider(): Provider | null {
+    private getNextRemovalQueueProvider(): Provider2 | null {
         const length: u64 = this._removalQueue.getLength();
         const index: u64 = this._removalQueue.startingIndex();
 
@@ -416,8 +415,8 @@ export class ProviderManager {
         return null;
     }
 
-    private getNextPriorityListProvider(): Provider | null {
-        let provider: Potential<Provider> = null;
+    private getNextPriorityListProvider(): Provider2 | null {
+        let provider: Potential<Provider2> = null;
         let providerId: u256;
 
         const length: u64 = this._priorityQueue.getLength();

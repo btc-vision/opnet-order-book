@@ -16,13 +16,12 @@ import {
 import { ripemd160 } from '@btc-vision/btc-runtime/runtime/env/global';
 import { u128, u256 } from '@btc-vision/as-bignum/assembly';
 import { UserReservation } from '../data-types/UserReservation';
-import { LiquidityQueue } from './Liquidity/LiquidityQueue';
 
 export const NORMAL_TYPE: u8 = 0;
 export const PRIORITY_TYPE: u8 = 1;
 export const LIQUIDITY_REMOVAL_TYPE: u8 = 2;
 
-export class Reservation {
+export class Reservation2 {
     public reservedIndexes: StoredU32Array;
     public reservedValues: StoredU128Array;
     public reservedPriority: StoredU8Array;
@@ -36,7 +35,7 @@ export class Reservation {
         reservationId: Uint8Array = new Uint8Array(0),
     ) {
         if (reservationId.length == 0) {
-            reservationId = Reservation.generateId(token, owner);
+            reservationId = Reservation2.generateId(token, owner);
         }
 
         const reservation = u128.fromBytes(reservationId, true);
@@ -50,7 +49,8 @@ export class Reservation {
     public get createdAt(): u64 {
         const block: u64 = this.expirationBlock();
 
-        return block - LiquidityQueue.RESERVATION_EXPIRE_AFTER;
+        //!!!!return block - LiquidityQueue.RESERVATION_EXPIRE_AFTER;
+        return block - 5;
     }
 
     public get userTimeoutBlockExpiration(): u64 {
@@ -69,8 +69,8 @@ export class Reservation {
         this.userReservation.reservedForLiquidityPool = value;
     }
 
-    public static load(reservationId: u128): Reservation {
-        return new Reservation(Address.dead(), Address.dead(), reservationId.toUint8Array(true));
+    public static load(reservationId: u128): Reservation2 {
+        return new Reservation2(Address.dead(), Address.dead(), reservationId.toUint8Array(true));
     }
 
     public static generateId(token: Address, owner: Address): Uint8Array {
