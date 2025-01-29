@@ -574,6 +574,7 @@ export class LiquidityQueue {
                         reservedAmount.toU256(),
                         quoteAtReservation,
                     );
+                    
                     const revertSats = SafeMath.min(costInSats, owedReserved);
                     const newReserved = SafeMath.sub(owedReserved, revertSats);
                     this.setBTCowedReserved(provider.providerId, newReserved);
@@ -586,6 +587,7 @@ export class LiquidityQueue {
                             leftover.toU256(),
                             quoteAtReservation,
                         );
+
                         const owedReservedNow = this.getBTCowedReserved(provider.providerId);
                         const revertSats = SafeMath.min(costInSatsLeftover, owedReservedNow);
                         const newOwedReserved = SafeMath.sub(owedReservedNow, revertSats);
@@ -665,12 +667,16 @@ export class LiquidityQueue {
 
                 provider.liquidity = SafeMath.sub128(provider.liquidity, tokensDesiredU128);
 
-                // (E) If leftover dust => reset
-                const satLeftValue = SafeMath.div(provider.liquidity.toU256(), quoteAtReservation);
+                // If leftover dust => reset
+                const satLeftValue = this.tokensToSatoshis(
+                    provider.liquidity.toU256(),
+                    quoteAtReservation,
+                );
+
                 if (
                     u256.lt(satLeftValue, LiquidityQueue.STRICT_MINIMUM_PROVIDER_RESERVATION_AMOUNT)
                 ) {
-                    this._providerManager.resetProvider(provider, /*burnRemainingFunds=*/ false);
+                    this._providerManager.resetProvider(provider, false);
                 }
 
                 // (F) Accumulate user stats
