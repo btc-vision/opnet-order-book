@@ -46,7 +46,7 @@ export class NativeSwap extends OP_NET {
     }
 
     private static get APPROVE_FROM_SELECTOR(): Selector {
-        return encodeSelector('approveFrom(address,address,uint256,bytes)');
+        return encodeSelector('approveFrom(address,uint256,uint64,bytes)');
     }
 
     public override onDeployment(_calldata: Calldata): void {
@@ -80,7 +80,7 @@ export class NativeSwap extends OP_NET {
                 return this.createPool(calldata, token);
             }
             case encodeSelector(
-                'createPoolWithSignature(bytes,address,uint256,uint128,string,uint16,uint256,uint16)',
+                'createPoolWithSignature(bytes,address,uint256,uint256,uint128,string,uint16,uint256,uint16)',
             ): {
                 return this.createPoolWithSignature(calldata);
             }
@@ -198,14 +198,17 @@ export class NativeSwap extends OP_NET {
         this.ensureValidSignatureLength(signature);
 
         const amount = calldata.readU256();
+        const nonce = calldata.readU256();
         const token: Address = calldata.readAddress();
 
         const calldataSend = new BytesWriter(
             68 + ADDRESS_BYTE_LENGTH + U256_BYTE_LENGTH + SELECTOR_BYTE_LENGTH,
         );
+
         calldataSend.writeSelector(NativeSwap.APPROVE_FROM_SELECTOR);
         calldataSend.writeAddress(this.address);
         calldataSend.writeU256(amount);
+        calldataSend.writeU256(nonce);
         calldataSend.writeBytesWithLength(signature);
 
         Blockchain.call(token, calldataSend);
@@ -462,6 +465,7 @@ export class NativeSwap extends OP_NET {
         result.writeU256(tokensOut); // how many tokens
         result.writeU256(requiredSatoshis); // how many sat needed
         result.writeU256(price); // final *scaled* price
+        result.writeU64(LiquidityQueue.QUOTE_SCALE.toU64());
         return result;
     }
 
