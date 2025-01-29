@@ -343,10 +343,6 @@ export class ReserveLiquidityOperation extends BaseOperation {
         }
 
         const maxTokensLeftBeforeCap = this.liquidityQueue.getMaximumTokensLeftBeforeCap();
-        Blockchain.log(
-            `tokensRemaining: ${tokensRemaining}, MaxTokensLeftBeforeCap: ${maxTokensLeftBeforeCap}`,
-        );
-
         tokensRemaining = SafeMath.min(tokensRemaining, maxTokensLeftBeforeCap);
 
         if (tokensRemaining.isZero()) {
