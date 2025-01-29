@@ -6,7 +6,7 @@ import {
     PROVIDER_LIQUIDITY_POINTER,
 } from './StoredPointers';
 import { AdvancedStoredString } from '../stored/AdvancedStoredString';
-import { Potential } from '../../../btc-runtime/runtime';
+import { Potential } from '@btc-vision/btc-runtime/runtime';
 
 export class Provider2 {
     public providerId: u256;

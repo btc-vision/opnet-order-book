@@ -883,7 +883,7 @@ export class LiquidityQueue2 {
     }
 
     public getReservationWithExpirationChecks(): Reservation2 {
-        const reservation = new Reservation2(Blockchain.tx.sender, this.token); ///!!!! JFB Parametre inverser ici
+        const reservation = new Reservation2(this.token, Blockchain.tx.sender);
         if (!reservation.valid()) {
             throw new Revert('No active reservation for this address.');
         }
