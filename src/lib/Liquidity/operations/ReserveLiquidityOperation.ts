@@ -343,6 +343,10 @@ export class ReserveLiquidityOperation extends BaseOperation {
         }
 
         const maxTokensLeftBeforeCap = this.liquidityQueue.getMaximumTokensLeftBeforeCap();
+        Blockchain.log(
+            `tokensRemaining: ${tokensRemaining}, MaxTokensLeftBeforeCap: ${maxTokensLeftBeforeCap}`,
+        );
+
         tokensRemaining = SafeMath.min(tokensRemaining, maxTokensLeftBeforeCap);
 
         if (tokensRemaining.isZero()) {
@@ -354,12 +358,7 @@ export class ReserveLiquidityOperation extends BaseOperation {
             currentQuote,
         );
 
-        if (
-            u256.lt(
-                satCostTokenRemaining,
-                LiquidityQueue.STRICT_MINIMUM_PROVIDER_RESERVATION_AMOUNT,
-            )
-        ) {
+        if (u256.lt(satCostTokenRemaining, LiquidityQueue.MINIMUM_PROVIDER_RESERVATION_AMOUNT)) {
             throw new Revert(`Minimum liquidity not met (${satCostTokenRemaining} sat)`);
         }
 

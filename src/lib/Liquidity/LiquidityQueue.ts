@@ -574,7 +574,7 @@ export class LiquidityQueue {
                         reservedAmount.toU256(),
                         quoteAtReservation,
                     );
-                    
+
                     const revertSats = SafeMath.min(costInSats, owedReserved);
                     const newReserved = SafeMath.sub(owedReserved, revertSats);
                     this.setBTCowedReserved(provider.providerId, newReserved);
@@ -739,7 +739,7 @@ export class LiquidityQueue {
         this._providerManager.setBTCowedReserved(providerId, amount);
     }
 
-    public getMaximumTokensLeftBeforeCap(): u256 {
+    /*public getMaximumTokensLeftBeforeCap(): u256 {
         // how many tokens are currently liquid vs. reserved
         const reservedAmount: u256 = this.reservedLiquidity;
         const totalLiquidity: u256 = this.liquidity;
@@ -760,6 +760,44 @@ export class LiquidityQueue {
         }
 
         return SafeMath.div(SafeMath.mul(totalLiquidity, leftoverRatio), a);
+    }*/
+
+    public getMaximumTokensLeftBeforeCap(): u256 {
+        // how many tokens are currently liquid vs. reserved
+        const reservedAmount: u256 = this.reservedLiquidity;
+        const totalLiquidity: u256 = this.liquidity;
+        const maxPercentage: u256 = u256.fromU64(this.maxReserves5BlockPercent);
+
+        if (totalLiquidity.isZero()) {
+            return u256.Zero;
+        }
+
+        // Compute reserved ratio in scaled form:
+        // ratioScaled = (reserved * QUOTE_SCALE) / totalLiquidity
+        let ratioScaled: u256 = SafeMath.mul(reservedAmount, LiquidityQueue.QUOTE_SCALE);
+        ratioScaled = SafeMath.div(ratioScaled, totalLiquidity);
+
+        // Convert your maxReserves5BlockPercent (like 5 => 5%)
+        //    into the same QUOTE_SCALE domain:
+        //    maxPercentScaled = (maxPercentage * QUOTE_SCALE) / 100
+        const hundred = u256.fromU64(100);
+        let maxPercentScaled = SafeMath.mul(maxPercentage, LiquidityQueue.QUOTE_SCALE);
+        maxPercentScaled = SafeMath.div(maxPercentScaled, hundred);
+
+        // leftoverRatioScaled = maxPercentScaled - ratioScaled
+        //    if leftoverRatioScaled < 0 => clamp to 0
+        let leftoverRatioScaled: u256;
+        if (u256.gt(ratioScaled, maxPercentScaled)) {
+            leftoverRatioScaled = u256.Zero;
+        } else {
+            leftoverRatioScaled = SafeMath.sub(maxPercentScaled, ratioScaled);
+        }
+
+        // leftoverTokens = (totalLiquidity * leftoverRatioScaled) / QUOTE_SCALE
+        return SafeMath.div(
+            SafeMath.mul(totalLiquidity, leftoverRatioScaled),
+            LiquidityQueue.QUOTE_SCALE,
+        );
     }
 
     /**
