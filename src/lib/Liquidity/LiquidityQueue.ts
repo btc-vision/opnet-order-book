@@ -510,6 +510,7 @@ export class LiquidityQueue {
         // **Important**: we delete the reservation record now
         // (since we have all needed info in local variables)
         reservation.delete();
+        reservation.save();
 
         // Track totals
         let totalTokensPurchased = u256.Zero;
