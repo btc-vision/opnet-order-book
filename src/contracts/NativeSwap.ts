@@ -461,7 +461,7 @@ export class NativeSwap extends OP_NET {
         }
 
         // Prepare output
-        const result = new BytesWriter(96); // 3 * u256
+        const result = new BytesWriter(104); // 3 * u256
         result.writeU256(tokensOut); // how many tokens
         result.writeU256(requiredSatoshis); // how many sat needed
         result.writeU256(price); // final *scaled* price
