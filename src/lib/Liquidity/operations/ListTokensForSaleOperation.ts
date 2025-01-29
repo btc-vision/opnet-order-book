@@ -49,7 +49,7 @@ export class ListTokensForSaleOperation extends BaseOperation {
         if (!this.initialLiquidity) {
             this.ensurePriceIsNotZero();
             this.ensureInitialProviderAddOnce();
-            this.ensureLiquidityNotTooLowInSathosis();
+            this.ensureLiquidityNotTooLowInSatoshis();
         }
 
         this.transferToken();
@@ -83,7 +83,7 @@ export class ListTokensForSaleOperation extends BaseOperation {
         }
     }
 
-    private ensureLiquidityNotTooLowInSathosis(): void {
+    private ensureLiquidityNotTooLowInSatoshis(): void {
         const currentPrice: u256 = this.liquidityQueue.quote();
         const liquidityInSatoshis: u256 = this.liquidityQueue.tokensToSatoshis(
             this.amountIn.toU256(),
@@ -96,7 +96,9 @@ export class ListTokensForSaleOperation extends BaseOperation {
                 LiquidityQueue.MINIMUM_LIQUIDITY_IN_SAT_VALUE_ADD_LIQUIDITY,
             )
         ) {
-            throw new Revert('Liquidity value is too low in satoshis.');
+            throw new Revert(
+                `Liquidity value is too low in satoshis. (provided: ${liquidityInSatoshis})`,
+            );
         }
     }
 
@@ -127,11 +129,17 @@ export class ListTokensForSaleOperation extends BaseOperation {
         const newTax: u128 = SafeMath.sub128(this.amountIn, newLiquidityNet);
 
         // handle normal->priority
-        let oldTax: u128 = u128.Zero;
+        //let oldTax: u128 = u128.Zero;
         const wasNormal =
             !this.provider.isPriority() && this.provider.isActive() && this.usePriorityQueue;
+
+        if (!this.oldLiquidity.isZero()) {
+            throw new Revert(`You must cancel your listings before using the priority queue.`);
+        }
+
         if (wasNormal) {
-            oldTax = this.liquidityQueue.computePriorityTax(this.oldLiquidity.toU256()).toU128();
+            //oldTax = this.liquidityQueue.computePriorityTax(this.oldLiquidity.toU256()).toU128();
+
             this.provider.setActive(true, true);
             this.liquidityQueue.addToPriorityQueue(this.providerId);
         } else if (!this.provider.isActive()) {
@@ -155,29 +163,25 @@ export class ListTokensForSaleOperation extends BaseOperation {
 
         // if priority => remove tax
         if (this.usePriorityQueue) {
-            this.removeTax(this.provider, oldTax, newTax);
+            this.removeTax(this.provider, newTax);
         }
 
         this.liquidityQueue.setBlockQuote();
     }
 
-    private removeTax(provider: Provider, oldTax: u128, newTax: u128): void {
+    private removeTax(provider: Provider, totalTax: u128): void {
         this.ensureEnoughPriorityFees();
 
-        const totalTax: u128 = SafeMath.add128(oldTax, newTax);
-        if (!totalTax.isZero()) {
-            provider.liquidity = SafeMath.sub128(provider.liquidity, totalTax);
-
-            this.liquidityQueue.buyTokens(totalTax.toU256(), u256.Zero);
-
-            this.liquidityQueue.updateTotalReserve(totalTax.toU256(), false);
-            // TODO: Motoswap fee collection here
-            TransferHelper.safeTransfer(
-                this.liquidityQueue.token,
-                Address.dead(),
-                totalTax.toU256(),
-            );
+        if (totalTax.isZero()) {
+            return;
         }
+
+        provider.liquidity = SafeMath.sub128(provider.liquidity, totalTax);
+
+        this.liquidityQueue.buyTokens(totalTax.toU256(), u256.Zero);
+        this.liquidityQueue.updateTotalReserve(totalTax.toU256(), false);
+
+        TransferHelper.safeTransfer(this.liquidityQueue.token, Address.dead(), totalTax.toU256());
     }
 
     private setProviderReceiver(provider: Provider): void {

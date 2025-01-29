@@ -217,11 +217,18 @@ export class ProviderManager {
         // fallback to initial liquidity provider
         if (!this._initialLiquidityProvider.value.isZero()) {
             const initProvider = getProvider(this._initialLiquidityProvider.value);
+            //Blockchain.log(`Is active: ${initProvider.isActive()}`);
+
             if (initProvider.isActive()) {
                 const availableLiquidity: u128 = SafeMath.sub128(
                     initProvider.liquidity,
                     initProvider.reserved,
                 );
+
+                //Blockchain.log(`Available liquidity: ${availableLiquidity.toString()}`);
+                //Blockchain.log(
+                //    `Reserved liquidity: ${initProvider.reserved.toString()}, liquidity: ${initProvider.liquidity.toString()}`,
+                //);
 
                 if (!availableLiquidity.isZero()) {
                     initProvider.indexedAt = u32.MAX_VALUE;
@@ -229,6 +236,8 @@ export class ProviderManager {
                 }
             }
         }
+
+        //Blockchain.log('No provider with liquidity found');
 
         return null;
     }
@@ -252,6 +261,10 @@ export class ProviderManager {
                 this._queue.delete(provider.indexedAt);
             }
         }
+
+        //Blockchain.log(
+        //    `Provider ${provider.providerId} removed from queue, remaining liquidity: ${provider.liquidity.toString()}`,
+        //);
 
         provider.reset();
     }
