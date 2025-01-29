@@ -638,7 +638,9 @@ export class LiquidityQueue {
                 // (A) Subtract the entire chunk from provider.reserved in one step
                 //     This ensures we never double-sub leftover + tokensDesired.
                 if (u128.lt(provider.reserved, reservedAmount)) {
-                    throw new Revert('Impossible: provider.reserved < reservedAmount');
+                    throw new Revert(
+                        `Impossible: provider.reserved < reservedAmount (${provider.reserved} < ${reservedAmount})`,
+                    );
                 }
                 provider.reserved = SafeMath.sub128(provider.reserved, reservedAmount);
 
