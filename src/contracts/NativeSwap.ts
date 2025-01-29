@@ -449,8 +449,7 @@ export class NativeSwap extends OP_NET {
         let requiredSatoshis = satoshisIn;
         if (u256.gt(tokensOut, availableLiquidity)) {
             tokensOut = availableLiquidity;
-            // requiredSatoshis = (tokensOut * SHIFT) / price
-            requiredSatoshis = SafeMath.div(tokensOut, price);
+            requiredSatoshis = queue.tokensToSatoshis(tokensOut, price);
 
             // If that is bigger than satoshisIn, clamp
             if (u256.gt(requiredSatoshis, satoshisIn)) {

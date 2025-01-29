@@ -64,9 +64,9 @@ export class ReserveLiquidityOperation extends BaseOperation {
                 break;
             }
 
-            Blockchain.log(
-                `Attempting to reserve liquidity from provider, indexed at ${provider.indexedAt}. Provider has ${provider.liquidity} and ${provider.reserved} reserved. Possible to reserve ${SafeMath.sub128(provider.liquidity, provider.reserved)} tokens.`,
-            );
+            //Blockchain.log(
+            //    `Attempting to reserve liquidity from provider, indexed at ${provider.indexedAt}. Provider has ${provider.liquidity} and ${provider.reserved} reserved. Possible to reserve ${SafeMath.sub128(provider.liquidity, provider.reserved)} tokens.`,
+            //);
 
             if (provider.indexedAt === lastId) {
                 throw new Revert(
@@ -333,6 +333,7 @@ export class ReserveLiquidityOperation extends BaseOperation {
             this.liquidityQueue.liquidity,
             this.liquidityQueue.reservedLiquidity,
         );
+
         if (u256.lt(totalAvailableLiquidity, tokensRemaining)) {
             tokensRemaining = totalAvailableLiquidity;
         }
