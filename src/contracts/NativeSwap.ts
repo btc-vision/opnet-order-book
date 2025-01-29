@@ -325,12 +325,10 @@ export class NativeSwap extends OP_NET {
         const totalFee = getTotalFeeCollected();
         this.ensureSufficientFeesCollected(totalFee);
 
-        const buyer: Address = Blockchain.tx.sender;
-
         const operation = new ReserveLiquidityOperation(
             queue,
             providerId,
-            buyer,
+            Blockchain.tx.sender,
             maximumAmountIn,
             minimumAmountOut,
             forLP,

@@ -278,14 +278,14 @@ export class LiquidityQueue {
         return this._dynamicFee.computeFeeAmount(totalTokensPurchased, feeBP);
     }
 
-    public computePriorityTax(amount: u256): u256 {
+    /*public computePriorityTax(amount: u256): u256 {
         const numerator = SafeMath.mul(
             amount,
             LiquidityQueue.PERCENT_TOKENS_FOR_PRIORITY_QUEUE.toU256(),
         );
 
         return SafeMath.div(numerator, LiquidityQueue.PERCENT_TOKENS_FOR_PRIORITY_FACTOR.toU256());
-    }
+    }*/
 
     public getCostPriorityFee(): u64 {
         const length = this._providerManager.priorityQueueLength;
@@ -493,9 +493,12 @@ export class LiquidityQueue {
         const outputs: TransactionOutput[] = Blockchain.tx.outputs;
 
         // 2) The quoted price at the time of reservation
-        const quoteAtReservation = this._quoteHistory.get(reservation.createdAt);
+        const blockNumber: u64 = reservation.createdAt % <u64>(u32.MAX_VALUE - 1);
+        const quoteAtReservation = this._quoteHistory.get(blockNumber);
         if (quoteAtReservation.isZero()) {
-            throw new Revert('Quote at reservation is zero. Unexpected error.');
+            throw new Revert(
+                `Quote at reservation is zero. (createdAt: ${blockNumber}, quoteAtReservation: ${quoteAtReservation})`,
+            );
         }
 
         // 3) Retrieve arrays (provider indexes, amounts, queue types)
@@ -794,8 +797,10 @@ export class LiquidityQueue {
             throw new Revert('Block number too large, max array size.');
         }
 
-        const blockNumberU32: u32 = <u32>Blockchain.block.numberU64;
+        const blockNumberU32: u64 = Blockchain.block.numberU64 % <u64>(u32.MAX_VALUE - 1);
         this._quoteHistory.set(blockNumberU32, this.quote());
+
+        Blockchain.log(`Quote set for block ${blockNumberU32}: ${this.quote()}`);
     }
 
     public updateTotalReserve(amount: u256, increase: bool): void {
@@ -830,10 +835,12 @@ export class LiquidityQueue {
         windowSize: u32 = LiquidityQueue.VOLATILITY_WINDOW_BLOCKS,
     ): u256 {
         // current quote
-        const currentQuote = this._quoteHistory.get(<u32>currentBlock);
+        const blockNumber: u64 = currentBlock % <u64>(u32.MAX_VALUE - 1);
+        const currentQuote = this._quoteHistory.get(blockNumber);
 
         // older quote from (currentBlock - windowSize)
-        const oldQuote = this._quoteHistory.get(<u32>(currentBlock - windowSize));
+        const oldBlock = (currentBlock - windowSize) % <u64>(u32.MAX_VALUE - 1);
+        const oldQuote = this._quoteHistory.get(oldBlock);
 
         if (oldQuote.isZero() || currentQuote.isZero()) {
             // fallback if no data
@@ -846,9 +853,9 @@ export class LiquidityQueue {
             diff = u256.mul(diff, u256.fromI64(-1));
         }
 
-        Blockchain.log(
-            `diff: ${diff.toString()}, oldQuote: ${oldQuote.toString()}, currentQuote: ${currentQuote.toString()}`,
-        );
+        //Blockchain.log(
+        //    `diff: ${diff.toString()}, oldQuote: ${oldQuote.toString()}, currentQuote: ${currentQuote.toString()}`,
+        //);
 
         // ratio = (|current - old| / old) * 10000 (for basis point)
         return SafeMath.div(SafeMath.mul(diff, u256.fromU64(10000)), oldQuote);
@@ -922,9 +929,9 @@ export class LiquidityQueue {
 
                     if (provider.pendingRemoval && queueType === LIQUIDITY_REMOVAL_TYPE) {
                         const providerId = provider.providerId;
-                        const currentQuoteAtThatTime = this._quoteHistory.get(
-                            reservation.createdAt,
-                        );
+
+                        const blockNumber: u64 = reservation.createdAt % <u64>(u32.MAX_VALUE - 1);
+                        const currentQuoteAtThatTime = this._quoteHistory.get(blockNumber);
 
                         // figure out how many sat was associated with 'reservedAmount'
                         const costInSats = this.tokensToSatoshis(
