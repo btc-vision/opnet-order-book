@@ -507,10 +507,17 @@ export class LiquidityQueue {
         const queueTypes: u8[] = reservation.getQueueTypes();
         const reservationForLP = reservation.reservedLP;
 
+        if (reservation.valid() === false) {
+            throw new Revert('Impossible state: Reservation is invalid but went thru executeTrade');
+        }
+
         // **Important**: we delete the reservation record now
         // (since we have all needed info in local variables)
         reservation.delete();
-        reservation.save();
+
+        if (reservation.valid() === true) {
+            throw new Revert('Impossible state: Reservation is still valid');
+        }
 
         // Track totals
         let totalTokensPurchased = u256.Zero;
