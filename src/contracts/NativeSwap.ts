@@ -442,7 +442,7 @@ export class NativeSwap extends OP_NET {
         const price: u256 = queue.quote();
         this.ensurePriceNotZeroAndLiquidity(price);
 
-        let tokensOut = SafeMath.mul(satoshisIn, price);
+        let tokensOut = queue.satoshisToTokens(satoshisIn, price);
 
         // If tokensOut > availableLiquidity, cap it
         const availableLiquidity = SafeMath.sub(queue.liquidity, queue.reservedLiquidity);

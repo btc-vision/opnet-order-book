@@ -799,8 +799,6 @@ export class LiquidityQueue {
 
         const blockNumberU32: u64 = Blockchain.block.numberU64 % <u64>(u32.MAX_VALUE - 1);
         this._quoteHistory.set(blockNumberU32, this.quote());
-
-        Blockchain.log(`Quote set for block ${blockNumberU32}: ${this.quote()}`);
     }
 
     public updateTotalReserve(amount: u256, increase: bool): void {
