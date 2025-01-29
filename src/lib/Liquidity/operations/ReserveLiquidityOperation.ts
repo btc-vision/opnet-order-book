@@ -357,10 +357,10 @@ export class ReserveLiquidityOperation extends BaseOperation {
         if (
             u256.lt(
                 satCostTokenRemaining,
-                LiquidityQueue.MINIMUM_LIQUIDITY_IN_SAT_VALUE_ADD_LIQUIDITY,
+                LiquidityQueue.STRICT_MINIMUM_PROVIDER_RESERVATION_AMOUNT,
             )
         ) {
-            throw new Revert('Minimum liquidity not met');
+            throw new Revert(`Minimum liquidity not met (${satCostTokenRemaining} sat)`);
         }
 
         return tokensRemaining;
