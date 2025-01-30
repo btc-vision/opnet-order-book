@@ -8,12 +8,12 @@ import {
     Revert,
 } from '@btc-vision/btc-runtime/runtime';
 
-const bytes = new Uint8Array(15);
-for (let i: i32 = 0; i < 15; i++) {
+const bytes = new Uint8Array(16);
+for (let i: i32 = 1; i < 16; i++) {
     bytes[i] = 0xff;
 }
 
-//export const MAX_RESERVATION_AMOUNT_PROVIDER = u128.fromBytes(bytes, true);
+export const MAX_RESERVATION_AMOUNT_PROVIDER = u128.fromBytes(bytes, true);
 
 @final
 export class UserLiquidity2 {

@@ -95,8 +95,24 @@ export class ProviderManager2 {
         return this._priorityQueue.getLength();
     }
 
+    public get removalQueueLength(): u64 {
+        return this._removalQueue.getLength();
+    }
+
+    public get standardQueueLength(): u64 {
+        return this._queue.getLength();
+    }
+
     public get priorityQueueStartingIndex(): u64 {
         return this._priorityQueue.startingIndex();
+    }
+
+    public get removalQueueStartingIndex(): u64 {
+        return this._removalQueue.startingIndex();
+    }
+
+    public get standardQueueStartingIndex(): u64 {
+        return this._queue.startingIndex();
     }
 
     public addToPriorityQueue(providerId: u256): void {

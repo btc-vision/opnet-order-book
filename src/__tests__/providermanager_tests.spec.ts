@@ -6,7 +6,7 @@ import {
 } from '@btc-vision/btc-runtime/runtime';
 import { ripemd160, sha256 } from '@btc-vision/btc-runtime/runtime/env/global';
 import { Reservation2 } from '../lib/Reservation2';
-import { clearCachedProviders } from '../lib/Provider2';
+import { clearCachedProviders, getProvider, Provider2 } from '../lib/Provider2';
 import { ProviderManager2 } from '../lib/Liquidity/ProviderManager2';
 import { u128, u256 } from '@btc-vision/as-bignum/assembly';
 
@@ -114,6 +114,37 @@ function setBlockchainEnvironment(currentBlock: u64): void {
     writer.writeU64(safeRnd64);
 
     Blockchain.setEnvironment(writer.getBuffer());
+}
+
+function createProvider(
+    providerAddress: Address,
+    tokenAddress: Address,
+    pendingRemoval: boolean = false,
+    isLP: boolean = true,
+    canProvideLiquidity: boolean = true,
+    btcReceiver: string = 'e123e2d23d233',
+    liquidityProvided: u256 = u256.fromU64(1000),
+    liquidity: u128 = u128.fromU64(1000),
+    reserved: u128 = u128.fromU64(0),
+    isActive: bool = true,
+    isPriority: bool = false,
+): Provider2 {
+    const providerId: u256 = addressToPointerU256(providerAddress, tokenAddress);
+    const provider: Provider2 = getProvider(providerId);
+
+    provider.setActive(isActive, isPriority);
+    provider.pendingRemoval = pendingRemoval;
+    provider.isLp = isLP;
+    provider.liquidityProvided = liquidityProvided;
+    provider.liquidity = liquidity;
+    provider.reserved = reserved;
+    provider.btcReceiver = btcReceiver;
+
+    if (canProvideLiquidity) {
+        provider.enableLiquidityProvision();
+    }
+
+    return provider;
 }
 
 const STRICT_MINIMUM_PROVIDER_RESERVATION_AMOUNT: u256 = u256.fromU32(600);
@@ -323,7 +354,15 @@ describe('ProviderManager tests', () => {
         expect(providerIdOut2).toStrictEqual(providerIdIn);
     });
 
-    it('should empty all the queues when cleanUpQueues is called', () => {
+    //new items in removal queue and previousRemovalStartingIndex = 0
+    // - 1 provider
+    // - 1 provider in pendingRemoval state
+    // - 1 provider and 1 provider in pendingRemoval state
+    // - 2 providers not in pendingRemoval state
+    // - 2 providers in pendingRemoval state
+    // - 1 provider in pendingRemoval state and 1 provider
+
+    it('should correctly set previousRemovalStartingIndex and removal queue state when cleanUpQueues is called, previousRemovalStartingIndex = 0, 1 provider', () => {
         const manager: ProviderManager2 = new ProviderManager2(
             tokenAddress1,
             tokenIdUint8Array1,
@@ -331,13 +370,344 @@ describe('ProviderManager tests', () => {
             STRICT_MINIMUM_PROVIDER_RESERVATION_AMOUNT,
         );
 
-        manager.addToPriorityQueue(u256.fromU64(1));
-        manager.addToPriorityQueue(u256.fromU64(0));
-        manager.addToRemovalQueue(u256.fromU64(2));
-        manager.addToRemovalQueue(u256.fromU64(0));
-        manager.addToStandardQueue(u256.fromU64(3));
-        manager.addToStandardQueue(u256.fromU64(0));
+        expect(manager.previousRemovalStartingIndex).toStrictEqual(0);
+        expect(manager.removalQueueLength).toStrictEqual(0);
+
+        const provider1: Provider2 = createProvider(providerAddress1, tokenAddress1);
+
+        manager.addToRemovalQueue(provider1.providerId);
+
+        expect(manager.removalQueueLength).toStrictEqual(1);
 
         manager.cleanUpQueues();
+
+        expect(manager.previousRemovalStartingIndex).toStrictEqual(1);
+        expect(manager.getFromRemovalQueue(0)).toStrictEqual(u256.Zero);
+        expect(manager.removalQueueStartingIndex).toStrictEqual(0);
+    });
+
+    it('should correctly set previousRemovalStartingIndex and removal queue state when cleanUpQueues is called, previousRemovalStartingIndex = 0, 1 provider in pending removal', () => {
+        const manager: ProviderManager2 = new ProviderManager2(
+            tokenAddress1,
+            tokenIdUint8Array1,
+            tokenId1,
+            STRICT_MINIMUM_PROVIDER_RESERVATION_AMOUNT,
+        );
+
+        expect(manager.previousRemovalStartingIndex).toStrictEqual(0);
+        expect(manager.removalQueueLength).toStrictEqual(0);
+
+        const provider1: Provider2 = createProvider(providerAddress1, tokenAddress1, true);
+
+        manager.addToRemovalQueue(provider1.providerId);
+
+        expect(manager.removalQueueLength).toStrictEqual(1);
+
+        manager.cleanUpQueues();
+
+        expect(manager.previousRemovalStartingIndex).toStrictEqual(0);
+        expect(manager.getFromRemovalQueue(0)).toStrictEqual(provider1.providerId);
+        expect(manager.removalQueueStartingIndex).toStrictEqual(0);
+    });
+
+    it('should correctly set previousRemovalStartingIndex and removal queue state when cleanUpQueues is called, previousRemovalStartingIndex = 0, 1 provider and 1 provider in pendingRemoval state', () => {
+        const manager: ProviderManager2 = new ProviderManager2(
+            tokenAddress1,
+            tokenIdUint8Array1,
+            tokenId1,
+            STRICT_MINIMUM_PROVIDER_RESERVATION_AMOUNT,
+        );
+
+        expect(manager.previousRemovalStartingIndex).toStrictEqual(0);
+        expect(manager.removalQueueLength).toStrictEqual(0);
+
+        const provider1: Provider2 = createProvider(providerAddress1, tokenAddress1);
+        const provider2: Provider2 = createProvider(providerAddress2, tokenAddress1, true);
+
+        manager.addToRemovalQueue(provider1.providerId);
+        manager.addToRemovalQueue(provider2.providerId);
+
+        expect(manager.removalQueueLength).toStrictEqual(2);
+
+        manager.cleanUpQueues();
+
+        expect(manager.previousRemovalStartingIndex).toStrictEqual(1);
+        expect(manager.getFromRemovalQueue(0)).toStrictEqual(u256.Zero);
+        expect(manager.getFromRemovalQueue(1)).toStrictEqual(provider2.providerId);
+        expect(manager.removalQueueStartingIndex).toStrictEqual(1);
+    });
+
+    it('should correctly set previousRemovalStartingIndex and removal queue state when cleanUpQueues is called, previousRemovalStartingIndex = 0, 2 provider not in pendingRemoval state', () => {
+        const manager: ProviderManager2 = new ProviderManager2(
+            tokenAddress1,
+            tokenIdUint8Array1,
+            tokenId1,
+            STRICT_MINIMUM_PROVIDER_RESERVATION_AMOUNT,
+        );
+
+        expect(manager.previousRemovalStartingIndex).toStrictEqual(0);
+        expect(manager.removalQueueLength).toStrictEqual(0);
+
+        const provider1: Provider2 = createProvider(providerAddress1, tokenAddress1);
+        const provider2: Provider2 = createProvider(providerAddress2, tokenAddress1);
+
+        manager.addToRemovalQueue(provider1.providerId);
+        manager.addToRemovalQueue(provider2.providerId);
+
+        expect(manager.removalQueueLength).toStrictEqual(2);
+
+        manager.cleanUpQueues();
+
+        expect(manager.previousRemovalStartingIndex).toStrictEqual(2);
+        expect(manager.getFromRemovalQueue(0)).toStrictEqual(u256.Zero);
+        expect(manager.getFromRemovalQueue(1)).toStrictEqual(u256.Zero);
+        expect(manager.removalQueueStartingIndex).toStrictEqual(0);
+    });
+
+    it('should correctly set previousRemovalStartingIndex and removal queue state when cleanUpQueues is called, previousRemovalStartingIndex = 0, 1 provider in pendingRemoval state and 1 provider', () => {
+        const manager: ProviderManager2 = new ProviderManager2(
+            tokenAddress1,
+            tokenIdUint8Array1,
+            tokenId1,
+            STRICT_MINIMUM_PROVIDER_RESERVATION_AMOUNT,
+        );
+
+        expect(manager.previousRemovalStartingIndex).toStrictEqual(0);
+        expect(manager.removalQueueLength).toStrictEqual(0);
+
+        const provider1: Provider2 = createProvider(providerAddress1, tokenAddress1, true);
+        const provider2: Provider2 = createProvider(providerAddress2, tokenAddress1);
+
+        manager.addToRemovalQueue(provider1.providerId);
+        manager.addToRemovalQueue(provider2.providerId);
+
+        expect(manager.removalQueueLength).toStrictEqual(2);
+
+        manager.cleanUpQueues();
+
+        expect(manager.previousRemovalStartingIndex).toStrictEqual(0);
+        expect(manager.getFromRemovalQueue(0)).toStrictEqual(provider1.providerId);
+        expect(manager.getFromRemovalQueue(1)).toStrictEqual(provider2.providerId);
+        expect(manager.removalQueueStartingIndex).toStrictEqual(0);
+    });
+
+    it('should correctly set previousRemovalStartingIndex and removal queue state when cleanUpQueues is called, previousRemovalStartingIndex = 0, 2 providers in pendingRemoval state', () => {
+        const manager: ProviderManager2 = new ProviderManager2(
+            tokenAddress1,
+            tokenIdUint8Array1,
+            tokenId1,
+            STRICT_MINIMUM_PROVIDER_RESERVATION_AMOUNT,
+        );
+
+        expect(manager.previousRemovalStartingIndex).toStrictEqual(0);
+        expect(manager.removalQueueLength).toStrictEqual(0);
+
+        const provider1: Provider2 = createProvider(providerAddress1, tokenAddress1, true);
+        const provider2: Provider2 = createProvider(providerAddress2, tokenAddress1, true);
+
+        manager.addToRemovalQueue(provider1.providerId);
+        manager.addToRemovalQueue(provider2.providerId);
+
+        expect(manager.removalQueueLength).toStrictEqual(2);
+
+        manager.cleanUpQueues();
+
+        expect(manager.previousRemovalStartingIndex).toStrictEqual(0);
+        expect(manager.getFromRemovalQueue(0)).toStrictEqual(provider1.providerId);
+        expect(manager.getFromRemovalQueue(1)).toStrictEqual(provider2.providerId);
+        expect(manager.removalQueueStartingIndex).toStrictEqual(0);
+    });
+
+    it('should correctly set previousRemovalStartingIndex and removal queue state when cleanUpQueues is called, previousRemovalStartingIndex <> 0, 1 provider', () => {
+        const manager: ProviderManager2 = new ProviderManager2(
+            tokenAddress1,
+            tokenIdUint8Array1,
+            tokenId1,
+            STRICT_MINIMUM_PROVIDER_RESERVATION_AMOUNT,
+        );
+
+        const provider1: Provider2 = createProvider(providerAddress1, tokenAddress1);
+        manager.addToRemovalQueue(provider1.providerId);
+        expect(manager.removalQueueLength).toStrictEqual(1);
+
+        manager.cleanUpQueues();
+
+        expect(manager.previousRemovalStartingIndex).toStrictEqual(1);
+        expect(manager.removalQueueLength).toStrictEqual(1);
+
+        const provider2: Provider2 = createProvider(providerAddress2, tokenAddress1);
+
+        manager.addToRemovalQueue(provider2.providerId);
+        expect(manager.removalQueueLength).toStrictEqual(2);
+        manager.cleanUpQueues();
+
+        expect(manager.previousRemovalStartingIndex).toStrictEqual(2);
+        expect(manager.getFromRemovalQueue(0)).toStrictEqual(u256.Zero);
+        expect(manager.getFromRemovalQueue(1)).toStrictEqual(u256.Zero);
+        expect(manager.removalQueueStartingIndex).toStrictEqual(0);
+    });
+
+    it('should correctly set previousRemovalStartingIndex and removal queue state when cleanUpQueues is called, previousRemovalStartingIndex <> 0, 1 provider in pending removal', () => {
+        const manager: ProviderManager2 = new ProviderManager2(
+            tokenAddress1,
+            tokenIdUint8Array1,
+            tokenId1,
+            STRICT_MINIMUM_PROVIDER_RESERVATION_AMOUNT,
+        );
+
+        const provider1: Provider2 = createProvider(providerAddress1, tokenAddress1);
+        manager.addToRemovalQueue(provider1.providerId);
+        expect(manager.removalQueueLength).toStrictEqual(1);
+
+        manager.cleanUpQueues();
+
+        expect(manager.previousRemovalStartingIndex).toStrictEqual(1);
+        expect(manager.removalQueueLength).toStrictEqual(1);
+
+        const provider2: Provider2 = createProvider(providerAddress1, tokenAddress1, true);
+
+        manager.addToRemovalQueue(provider2.providerId);
+
+        expect(manager.removalQueueLength).toStrictEqual(2);
+
+        manager.cleanUpQueues();
+
+        expect(manager.previousRemovalStartingIndex).toStrictEqual(1);
+        expect(manager.getFromRemovalQueue(0)).toStrictEqual(u256.Zero);
+        expect(manager.getFromRemovalQueue(1)).toStrictEqual(provider1.providerId);
+        expect(manager.removalQueueStartingIndex).toStrictEqual(1);
+    });
+
+    it('should correctly set previousRemovalStartingIndex and removal queue state when cleanUpQueues is called, previousRemovalStartingIndex <> 0, 1 provider and 1 provider in pendingRemoval state', () => {
+        const manager: ProviderManager2 = new ProviderManager2(
+            tokenAddress1,
+            tokenIdUint8Array1,
+            tokenId1,
+            STRICT_MINIMUM_PROVIDER_RESERVATION_AMOUNT,
+        );
+
+        const provider1: Provider2 = createProvider(providerAddress1, tokenAddress1);
+        manager.addToRemovalQueue(provider1.providerId);
+        expect(manager.removalQueueLength).toStrictEqual(1);
+
+        manager.cleanUpQueues();
+
+        expect(manager.previousRemovalStartingIndex).toStrictEqual(1);
+        expect(manager.removalQueueLength).toStrictEqual(1);
+
+        const provider2: Provider2 = createProvider(providerAddress2, tokenAddress1);
+        const provider3: Provider2 = createProvider(providerAddress3, tokenAddress1, true);
+
+        manager.addToRemovalQueue(provider2.providerId);
+        manager.addToRemovalQueue(provider3.providerId);
+
+        expect(manager.removalQueueLength).toStrictEqual(3);
+
+        manager.cleanUpQueues();
+
+        expect(manager.previousRemovalStartingIndex).toStrictEqual(2);
+        expect(manager.getFromRemovalQueue(0)).toStrictEqual(u256.Zero);
+        expect(manager.getFromRemovalQueue(1)).toStrictEqual(u256.Zero);
+        expect(manager.getFromRemovalQueue(2)).toStrictEqual(provider3.providerId);
+        expect(manager.removalQueueStartingIndex).toStrictEqual(2);
+    });
+
+    it('should correctly set previousRemovalStartingIndex and removal queue state when cleanUpQueues is called, previousRemovalStartingIndex <> 0, 2 provider not in pendingRemoval state', () => {
+        const manager: ProviderManager2 = new ProviderManager2(
+            tokenAddress1,
+            tokenIdUint8Array1,
+            tokenId1,
+            STRICT_MINIMUM_PROVIDER_RESERVATION_AMOUNT,
+        );
+        const provider1: Provider2 = createProvider(providerAddress1, tokenAddress1);
+        manager.addToRemovalQueue(provider1.providerId);
+        expect(manager.removalQueueLength).toStrictEqual(1);
+
+        manager.cleanUpQueues();
+
+        expect(manager.previousRemovalStartingIndex).toStrictEqual(1);
+        expect(manager.removalQueueLength).toStrictEqual(1);
+
+        const provider2: Provider2 = createProvider(providerAddress2, tokenAddress1);
+        const provider3: Provider2 = createProvider(providerAddress3, tokenAddress1);
+
+        manager.addToRemovalQueue(provider2.providerId);
+        manager.addToRemovalQueue(provider3.providerId);
+
+        expect(manager.removalQueueLength).toStrictEqual(3);
+
+        manager.cleanUpQueues();
+
+        expect(manager.previousRemovalStartingIndex).toStrictEqual(3);
+        expect(manager.getFromRemovalQueue(0)).toStrictEqual(u256.Zero);
+        expect(manager.getFromRemovalQueue(1)).toStrictEqual(u256.Zero);
+        expect(manager.getFromRemovalQueue(2)).toStrictEqual(u256.Zero);
+        expect(manager.removalQueueStartingIndex).toStrictEqual(0);
+    });
+
+    it('should correctly set previousRemovalStartingIndex and removal queue state when cleanUpQueues is called, previousRemovalStartingIndex <> 0, 1 provider in pendingRemoval state and 1 provider', () => {
+        const manager: ProviderManager2 = new ProviderManager2(
+            tokenAddress1,
+            tokenIdUint8Array1,
+            tokenId1,
+            STRICT_MINIMUM_PROVIDER_RESERVATION_AMOUNT,
+        );
+        const provider1: Provider2 = createProvider(providerAddress1, tokenAddress1);
+        manager.addToRemovalQueue(provider1.providerId);
+        expect(manager.removalQueueLength).toStrictEqual(1);
+
+        manager.cleanUpQueues();
+
+        expect(manager.previousRemovalStartingIndex).toStrictEqual(1);
+        expect(manager.removalQueueLength).toStrictEqual(1);
+
+        const provider2: Provider2 = createProvider(providerAddress2, tokenAddress1, true);
+        const provider3: Provider2 = createProvider(providerAddress3, tokenAddress1);
+
+        manager.addToRemovalQueue(provider2.providerId);
+        manager.addToRemovalQueue(provider3.providerId);
+
+        expect(manager.removalQueueLength).toStrictEqual(3);
+
+        manager.cleanUpQueues();
+
+        expect(manager.previousRemovalStartingIndex).toStrictEqual(1);
+        expect(manager.getFromRemovalQueue(0)).toStrictEqual(u256.Zero);
+        expect(manager.getFromRemovalQueue(1)).toStrictEqual(provider2.providerId);
+        expect(manager.getFromRemovalQueue(2)).toStrictEqual(provider3.providerId);
+        expect(manager.removalQueueStartingIndex).toStrictEqual(1);
+    });
+
+    it('should correctly set previousRemovalStartingIndex and removal queue state when cleanUpQueues is called, previousRemovalStartingIndex <> 0, 2 providers in pendingRemoval state', () => {
+        const manager: ProviderManager2 = new ProviderManager2(
+            tokenAddress1,
+            tokenIdUint8Array1,
+            tokenId1,
+            STRICT_MINIMUM_PROVIDER_RESERVATION_AMOUNT,
+        );
+        const provider1: Provider2 = createProvider(providerAddress1, tokenAddress1);
+        manager.addToRemovalQueue(provider1.providerId);
+        expect(manager.removalQueueLength).toStrictEqual(1);
+
+        manager.cleanUpQueues();
+
+        expect(manager.previousRemovalStartingIndex).toStrictEqual(1);
+        expect(manager.removalQueueLength).toStrictEqual(1);
+
+        const provider2: Provider2 = createProvider(providerAddress1, tokenAddress1, true);
+        const provider3: Provider2 = createProvider(providerAddress2, tokenAddress1, true);
+
+        manager.addToRemovalQueue(provider2.providerId);
+        manager.addToRemovalQueue(provider3.providerId);
+
+        expect(manager.removalQueueLength).toStrictEqual(3);
+
+        manager.cleanUpQueues();
+
+        expect(manager.previousRemovalStartingIndex).toStrictEqual(1);
+        expect(manager.getFromRemovalQueue(0)).toStrictEqual(u256.Zero);
+        expect(manager.getFromRemovalQueue(1)).toStrictEqual(provider2.providerId);
+        expect(manager.getFromRemovalQueue(2)).toStrictEqual(provider3.providerId);
+        expect(manager.removalQueueStartingIndex).toStrictEqual(1);
     });
 });
