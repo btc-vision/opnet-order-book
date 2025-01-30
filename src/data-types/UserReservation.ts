@@ -6,16 +6,18 @@ import {
     encodePointer,
     MemorySlotPointer,
 } from '@btc-vision/btc-runtime/runtime';
+import { LiquidityQueue } from '../lib/Liquidity/LiquidityQueue';
 
 @final
 export class UserReservation {
     private readonly u256Pointer: u256;
 
-    private reservedLP: u8 = 0;
-
     private expirationBlock: u64 = 0;
     private priorityIndex: u64 = 0;
-    private userTimeoutBlockExpiration: u64 = 0;
+    private purgeIndex: u32 = u32.MAX_VALUE;
+
+    private isTimeout: bool = false;
+    private reservedLP: bool = false;
 
     // Flags to manage state
     private isLoaded: bool = false;
@@ -38,14 +40,14 @@ export class UserReservation {
 
     public get reservedForLiquidityPool(): bool {
         this.ensureValues();
-        return this.reservedLP == 1;
+        return this.reservedLP;
     }
 
     public set reservedForLiquidityPool(value: bool) {
         this.ensureValues();
 
-        if (this.reservedLP != (value ? 1 : 0)) {
-            this.reservedLP = value ? 1 : 0;
+        if (this.reservedLP != value) {
+            this.reservedLP = value;
             this.isChanged = true;
         }
     }
@@ -58,6 +60,11 @@ export class UserReservation {
     @inline
     public getExpirationBlock(): u64 {
         this.ensureValues();
+
+        if (this.expirationBlock < Blockchain.block.numberU64) {
+            return 0;
+        }
+
         return this.expirationBlock;
     }
 
@@ -71,8 +78,21 @@ export class UserReservation {
         this.ensureValues();
         if (this.expirationBlock != block) {
             this.expirationBlock = block;
+            this.isTimeout = false;
             this.isChanged = true;
         }
+    }
+
+    /**
+     * @method timeout
+     * @description Timeout the user.
+     * @returns {void} - Timeout the user.
+     */
+    @inline
+    public timeout(): void {
+        this.ensureValues();
+        this.isTimeout = true;
+        this.isChanged = true;
     }
 
     /**
@@ -83,21 +103,7 @@ export class UserReservation {
     @inline
     public getUserTimeoutBlockExpiration(): u64 {
         this.ensureValues();
-        return this.userTimeoutBlockExpiration;
-    }
-
-    /**
-     * @method setUserTimeoutBlockExpiration
-     * @description Sets the user timeout block expiration.
-     * @param block - The user timeout block expiration to set.
-     */
-    @inline
-    public setUserTimeoutBlockExpiration(block: u64): void {
-        this.ensureValues();
-        if (this.userTimeoutBlockExpiration != block) {
-            this.userTimeoutBlockExpiration = block;
-            this.isChanged = true;
-        }
+        return this.expirationBlock + LiquidityQueue.TIMEOUT_AFTER_EXPIRATION;
     }
 
     /**
@@ -113,14 +119,44 @@ export class UserReservation {
     }
 
     /**
+     * @method setPurgeIndex
+     * @description Set purge index.
+     * @returns {void}
+     */
+    @inline
+    public setPurgeIndex(index: u32): void {
+        if (this.purgeIndex != index) {
+            this.purgeIndex = index;
+            this.isChanged = true;
+        }
+    }
+
+    /**
+     * @method getPurgeIndex
+     * @description Get purge index.
+     * @returns {u32}
+     */
+    @inline
+    public getPurgeIndex(): u32 {
+        this.ensureValues();
+        return this.purgeIndex;
+    }
+
+    /**
      * @method reset
      * @description Resets all fields to their default values and marks the state as changed.
      */
     @inline
-    public reset(): void {
-        this.expirationBlock = 0;
+    public reset(isTimeout: boolean): void {
         this.priorityIndex = 0;
-        this.reservedLP = 0;
+        this.reservedLP = false;
+        this.purgeIndex = u32.MAX_VALUE;
+
+        if (!isTimeout) {
+            this.expirationBlock = 0;
+            this.isTimeout = false;
+        }
+
         this.isChanged = true;
     }
 
@@ -148,12 +184,18 @@ export class UserReservation {
     }
 
     private unpackFlags(flag: u8): void {
-        this.reservedLP = flag & 0b1;
+        this.reservedLP = !!(flag & 0b1);
+        this.isTimeout = !!(flag & 0b10);
         // (flag >> 1) & 0b1;
     }
 
     private packFlags(): u8 {
-        return this.reservedLP;
+        let flags: u8 = 0;
+
+        if (this.reservedLP) flags |= 0b1;
+        if (this.isTimeout) flags |= 0b10;
+
+        return flags;
     }
 
     /**
@@ -175,8 +217,8 @@ export class UserReservation {
             // Unpack priorityIndex (8 bytes, little endian)
             this.priorityIndex = reader.readU64();
 
-            // Unpack userTimeoutBlockExpiration (8 bytes, little endian)
-            this.userTimeoutBlockExpiration = reader.readU64();
+            // Unpack purgeIndex (4 bytes, little endian)
+            this.purgeIndex = reader.readU32();
 
             this.isLoaded = true;
         }
@@ -200,8 +242,8 @@ export class UserReservation {
         // Pack priorityIndex (8 bytes, little endian)
         writer.writeU64(this.priorityIndex);
 
-        // Pack userTimeoutBlockExpiration (8 bytes, little endian)
-        writer.writeU64(this.userTimeoutBlockExpiration);
+        // Pack purgeIndex (4 bytes, little endian)
+        writer.writeU32(this.purgeIndex);
 
         return u256.fromBytes(writer.getBuffer(), true);
     }

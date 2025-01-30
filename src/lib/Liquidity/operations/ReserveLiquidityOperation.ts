@@ -235,26 +235,10 @@ export class ReserveLiquidityOperation extends BaseOperation {
 
                 this.emitLiquidityReservedEvent(provider.btcReceiver, costInSatoshis.toU128());
             }
-            //Blockchain.log('tokensRemaining after iteration: ' + tokensRemaining.toString());
         }
-
-        /*Blockchain.log(
-            'Finished reservation loop. tokensReserved=' +
-                tokensReserved.toString() +
-                ', satSpent=' +
-                satSpent.toString() +
-                ', minimumAmountOut=' +
-                this.minimumAmountOut.toString(),
-        );*/
 
         // If we didn't reserve enough
         if (u256.lt(tokensReserved, this.minimumAmountOut)) {
-            /*Blockchain.log(
-                'Revert: Not enough liquidity reserved. Wanted=' +
-                    this.minimumAmountOut.toString() +
-                    ', got=' +
-                    tokensReserved.toString(),
-            );*/
             throw new Revert(
                 `Not enough liquidity reserved; wanted ${this.minimumAmountOut}, got ${tokensReserved}, spent ${satSpent}, leftover tokens: ${tokensRemaining}, quote: ${currentQuote}`,
             );
@@ -266,13 +250,25 @@ export class ReserveLiquidityOperation extends BaseOperation {
         reservation.setExpirationBlock(
             Blockchain.block.numberU64 + LiquidityQueue.RESERVATION_EXPIRE_AFTER,
         );
-        reservation.save();
 
         const reservationList = this.liquidityQueue.getReservationListForBlock(
             Blockchain.block.numberU64,
         );
+
+        const reservationActiveList = this.liquidityQueue.getActiveReservationListForBlock(
+            Blockchain.block.numberU64,
+        );
+
         reservationList.push(reservation.reservationId);
+
+        const index: u32 = <u32>(reservationList.getLength() - 1);
+        reservation.setPurgeIndex(index);
         reservationList.save();
+
+        reservationActiveList.set(index, true);
+        reservationActiveList.save();
+
+        reservation.save();
 
         this.liquidityQueue.setBlockQuote();
         this.emitReservationCreatedEvent(tokensReserved, satSpent);
@@ -288,7 +284,6 @@ export class ReserveLiquidityOperation extends BaseOperation {
 
     private ensureReservationValid(reservation: Reservation): void {
         if (reservation.valid()) {
-            //Blockchain.log('Revert: Existing active reservation detected');
             throw new Revert(
                 'You already have an active reservation. Swap or wait for expiration before creating another',
             );
@@ -301,14 +296,12 @@ export class ReserveLiquidityOperation extends BaseOperation {
             Blockchain.block.numberU64 <= userTimeoutUntilBlock &&
             this.liquidityQueue.timeOutEnabled
         ) {
-            //Blockchain.log('Revert: User is timed out');
             throw new Revert('User is timed out');
         }
     }
 
     private ensureCurrentQuoteIsValid(currentQuote: u256): void {
         if (currentQuote.isZero()) {
-            //Blockchain.log('Revert: currentQuote is zero => Token is worth infinity');
             throw new Revert('Impossible state: Token is worth infinity');
         }
     }

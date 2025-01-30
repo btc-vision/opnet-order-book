@@ -7,7 +7,7 @@
             "optimizeLevel": 3,
             "shrinkLevel": 2,
             "converge": true,
-            "noAssert": true,
+            "noAssert": false,
             "disable": [
                 "mutable-globals",
                 "sign-extension",

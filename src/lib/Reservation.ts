@@ -57,10 +57,6 @@ export class Reservation {
         return this.userReservation.getUserTimeoutBlockExpiration();
     }
 
-    public set userTimeoutBlockExpiration(block: u64) {
-        this.userReservation.setUserTimeoutBlockExpiration(block);
-    }
-
     public get reservedLP(): bool {
         return this.userReservation.reservedForLiquidityPool;
     }
@@ -84,6 +80,18 @@ export class Reservation {
         return hash.slice(0, 16);
     }
 
+    public setPurgeIndex(index: u32): void {
+        this.userReservation.setPurgeIndex(index);
+    }
+
+    public getPurgeIndex(): u32 {
+        return this.userReservation.getPurgeIndex();
+    }
+
+    public timeout(): void {
+        this.userReservation.timeout();
+    }
+
     public save(): void {
         this.userReservation.save();
         this.reservedIndexes.save();
@@ -99,10 +107,6 @@ export class Reservation {
         this.userReservation.setExpirationBlock(block);
     }
 
-    public isActive(): bool {
-        return this.userReservation.getExpirationBlock() > 0;
-    }
-
     public valid(): bool {
         return !this.expired() && this.reservedIndexes.getLength() > 0;
     }
@@ -111,11 +115,11 @@ export class Reservation {
         return this.userReservation.getExpirationBlock();
     }
 
-    public delete(): void {
+    public delete(isTimeout: boolean): void {
         this.reservedIndexes.reset();
         this.reservedValues.reset();
         this.reservedPriority.reset();
-        this.userReservation.reset();
+        this.userReservation.reset(isTimeout);
 
         this.save();
     }
