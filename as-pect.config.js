@@ -26,6 +26,7 @@ export default {
         'src/lib/**/*.ts',
         'src/math/**/*.ts',
         'src/stored/**/*.ts',
+        'src/index.ts',
     ],
     /**
      * Specify if the binary wasm file should be written to the file system.
