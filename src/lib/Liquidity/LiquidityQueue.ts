@@ -4,12 +4,14 @@ import {
     BytesWriter,
     Revert,
     SafeMath,
+    StoredAddress,
     StoredBooleanArray,
     StoredU128Array,
     StoredU256,
     StoredU256Array,
     StoredU64,
     TransactionOutput,
+    TransferHelper,
 } from '@btc-vision/btc-runtime/runtime';
 import { u128, u256 } from '@btc-vision/as-bignum/assembly';
 
@@ -29,6 +31,8 @@ import {
     LIQUIDITY_VIRTUAL_T_POINTER,
     RESERVATION_IDS_BY_BLOCK_POINTER,
     RESERVATION_SETTINGS_POINTER,
+    STAKING_CA_POINTER,
+    STAKING_FEE_BPS_POINTER,
     TOTAL_RESERVES_POINTER,
 } from '../StoredPointers';
 
@@ -81,6 +85,10 @@ export class LiquidityQueue {
     private readonly _deltaBTCBuy: StoredU256;
     private readonly _deltaTokensBuy: StoredU256;
     private readonly _deltaTokensSell: StoredU256;
+
+    // Staking contract details
+    private readonly stakingContractAddress: StoredAddress;
+    private readonly stakingFeeBps: StoredU256;
 
     private consumedOutputsFromUTXOs: Map<string, u64> = new Map<string, u64>();
 
@@ -138,6 +146,10 @@ export class LiquidityQueue {
 
         this._settingPurge = new StoredU64(LIQUIDITY_LAST_UPDATE_BLOCK_POINTER, tokenId, u256.Zero);
         this._settings = new StoredU64(RESERVATION_SETTINGS_POINTER, tokenId, u256.Zero);
+
+        // Staking
+        this.stakingContractAddress = new StoredAddress(STAKING_CA_POINTER, Address.dead());
+        this.stakingFeeBps = new StoredU256(STAKING_FEE_BPS_POINTER, u256.Zero, u256.Zero);
 
         if (purgeOldReservations) {
             this.purgeReservationsAndRestoreProviders();
@@ -882,15 +894,18 @@ export class LiquidityQueue {
         this._totalReserved.set(this.tokenId, newReserved);
     }
 
-    public distributeFee(_totalFee: u256): void {
-        // !!!!TODO: Add motoswap fee here
+    public distributeFee(totalFee: u256): void {
+        // TODO: Do we need to updateTotalReserve? What about virtualReserve?
         // if sending token to someone else, we need to call updateTotalReserve
         // this.virtualTokenReserve = SafeMath.add(this.virtualTokenReserve, totalFee);
+        // TODO: What is this split? Is it outdated?
         // If you want an 80/20 split:
         // const feeLP = SafeMath.div(SafeMath.mul(totalFee, u256.fromU64(80)), u256.fromU64(100));
         // const feeMoto = SafeMath.sub(totalFee, feeLP);
         // this.virtualTokenReserve = SafeMath.add(this.virtualTokenReserve, feeLP);
         // TransferHelper.safeTransfer(this.token, MOTOSWAP, feeMoto);
+
+        TransferHelper.safeTransfer(this.token, this.stakingContractAddress.value, totalFee);
     }
 
     private computeVolatility(

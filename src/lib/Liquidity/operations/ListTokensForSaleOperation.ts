@@ -181,6 +181,7 @@ export class ListTokensForSaleOperation extends BaseOperation {
         this.liquidityQueue.buyTokens(totalTax.toU256(), u256.Zero);
         this.liquidityQueue.updateTotalReserve(totalTax.toU256(), false);
 
+        // TODO: Should we add staking contract fee here too? Or should this go to the staking contract?
         TransferHelper.safeTransfer(this.liquidityQueue.token, Address.dead(), totalTax.toU256());
     }
 

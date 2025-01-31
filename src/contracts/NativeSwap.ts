@@ -8,6 +8,8 @@ import {
     Revert,
     SafeMath,
     Selector,
+    StoredAddress,
+    StoredU256,
     U128_BYTE_LENGTH,
     U256_BYTE_LENGTH,
     U64_BYTE_LENGTH,
@@ -27,6 +29,7 @@ import { ReserveLiquidityOperation } from '../lib/Liquidity/operations/ReserveLi
 import { CancelListingOperation } from '../lib/Liquidity/operations/CancelListingOperation';
 import { SwapOperation } from '../lib/Liquidity/operations/SwapOperation';
 import { SELECTOR_BYTE_LENGTH } from '@btc-vision/btc-runtime/runtime/utils/lengths';
+import { STAKING_CA_POINTER, STAKING_FEE_BPS_POINTER } from '../lib/StoredPointers';
 
 /**
  * OrderBook contract for the OP_NET order book system,
@@ -36,9 +39,14 @@ import { SELECTOR_BYTE_LENGTH } from '@btc-vision/btc-runtime/runtime/utils/leng
 @final
 export class NativeSwap extends OP_NET {
     private readonly minimumTradeSize: u256 = u256.fromU32(10_000); // The minimum trade size in satoshis.
+    public stakingContractFeeBps: StoredU256;
+    public stakingContractAddress: StoredAddress;
 
     public constructor() {
         super();
+
+        this.stakingContractAddress = new StoredAddress(STAKING_CA_POINTER, Address.dead());
+        this.stakingContractFeeBps = new StoredU256(STAKING_FEE_BPS_POINTER, u256.Zero, u256.Zero);
     }
 
     private static get DEPLOYER_SELECTOR(): Selector {
@@ -51,6 +59,8 @@ export class NativeSwap extends OP_NET {
 
     public override onDeployment(_calldata: Calldata): void {
         FeeManager.onDeploy();
+        // Default staking fee: 0.2%
+        this.stakingContractFeeBps.set(u256.from(20));
     }
 
     public override onExecutionCompleted(): void {
@@ -86,6 +96,10 @@ export class NativeSwap extends OP_NET {
             }
             case encodeSelector('setFees(uint64,uint64,uint64)'):
                 return this.setFees(calldata);
+            case encodeSelector('setStakingContractAddress(address)'):
+                return this.setStakingContractAddress(calldata);
+            case encodeSelector('setStakingFeeBips(uint256)'):
+                return this.setStakingFeeBips(calldata);
 
             /** Readable methods */
             case encodeSelector('getReserve(address)'):
@@ -100,6 +114,10 @@ export class NativeSwap extends OP_NET {
                 return this.getFees(calldata);
             case encodeSelector('getAntibotSettings(address)'):
                 return this.getAntibotSettings(calldata);
+            case encodeSelector('getStakingContractAddress'):
+                return this.getStakingContractAddress(calldata);
+            case encodeSelector('getStakingFeeBips'):
+                return this.getStakingFeeBips(calldata);
             default:
                 return super.execute(method, calldata);
         }
@@ -132,6 +150,39 @@ export class NativeSwap extends OP_NET {
         FeeManager.RESERVATION_BASE_FEE = calldata.readU64();
         FeeManager.PRIORITY_QUEUE_BASE_FEE = calldata.readU64();
         FeeManager.PRICE_PER_USER_IN_PRIORITY_QUEUE_BTC = calldata.readU64();
+
+        const result = new BytesWriter(1);
+        result.writeBoolean(true);
+        return result;
+    }
+
+    private getStakingContractAddress(_calldata: Calldata): BytesWriter {
+        const response = new BytesWriter(ADDRESS_BYTE_LENGTH);
+        response.writeAddress(this.stakingContractAddress.value);
+
+        return response;
+    }
+
+    private setStakingContractAddress(calldata: Calldata): BytesWriter {
+        this.onlyDeployer(Blockchain.tx.sender);
+
+        this.stakingContractAddress.value = calldata.readAddress();
+
+        const result = new BytesWriter(1);
+        result.writeBoolean(true);
+        return result;
+    }
+
+    private getStakingFeeBips(_calldata: Calldata): BytesWriter {
+        const response = new BytesWriter(U256_BYTE_LENGTH);
+        response.writeU256(this.stakingContractFeeBps.value);
+
+        return response;
+    }
+
+    private setStakingFeeBips(calldata: Calldata): BytesWriter {
+        this.onlyDeployer(Blockchain.tx.sender);
+        this.stakingContractFeeBps.set(calldata.readU256());
 
         const result = new BytesWriter(1);
         result.writeBoolean(true);
