@@ -1,12 +1,12 @@
 import { Address, Blockchain, BytesWriter } from '@btc-vision/btc-runtime/runtime';
-import { clearCachedProviders } from '../lib/Provider2';
+import { clearCachedProviders } from '../lib/Provider';
 import { u128, u256 } from '@btc-vision/as-bignum/assembly';
 import {
     LIQUIDITY_REMOVAL_TYPE,
     NORMAL_TYPE,
     PRIORITY_TYPE,
-    Reservation2,
-} from '../lib/Reservation2';
+    Reservation,
+} from '../lib/Reservation';
 
 const providerAddress1: Address = new Address([
     68, 153, 66, 199, 127, 168, 221, 199, 156, 120, 43, 34, 88, 0, 29, 93, 123, 133, 101, 220, 185,
@@ -50,7 +50,7 @@ const tokenAddress1: Address = new Address([
 ]);
 
 function createReservationId(tokenAddress: Address, providerAddress: Address): u128 {
-    const reservationArrayId: Uint8Array = Reservation2.generateId(tokenAddress, providerAddress);
+    const reservationArrayId: Uint8Array = Reservation.generateId(tokenAddress, providerAddress);
 
     return u128.fromBytes(reservationArrayId, true);
 }
@@ -84,9 +84,9 @@ describe('Reservation tests', () => {
     it('should create a new reservation and initialize correctly', () => {
         setBlockchainEnvironment(1);
 
-        const reservation: Reservation2 = new Reservation2(tokenAddress1, providerAddress1);
+        const reservation: Reservation = new Reservation(tokenAddress1, providerAddress1);
         const reservationId = u128.fromBytes(
-            Reservation2.generateId(tokenAddress1, providerAddress1),
+            Reservation.generateId(tokenAddress1, providerAddress1),
             true,
         );
 
@@ -103,7 +103,7 @@ describe('Reservation tests', () => {
     it('should correctly get/set expiration block when greater than current block number', () => {
         setBlockchainEnvironment(1);
 
-        const reservation: Reservation2 = new Reservation2(tokenAddress1, providerAddress1);
+        const reservation: Reservation = new Reservation(tokenAddress1, providerAddress1);
 
         reservation.setExpirationBlock(10);
 
@@ -113,7 +113,7 @@ describe('Reservation tests', () => {
     it('should get 0 as expiration block when smaller/equal to current block number', () => {
         setBlockchainEnvironment(10);
 
-        const reservation: Reservation2 = new Reservation2(tokenAddress1, providerAddress1);
+        const reservation: Reservation = new Reservation(tokenAddress1, providerAddress1);
 
         reservation.setExpirationBlock(10);
 
@@ -121,7 +121,7 @@ describe('Reservation tests', () => {
 
         setBlockchainEnvironment(10);
 
-        const reservation2: Reservation2 = new Reservation2(tokenAddress1, providerAddress1);
+        const reservation2: Reservation = new Reservation(tokenAddress1, providerAddress1);
 
         reservation2.setExpirationBlock(9);
 
@@ -130,7 +130,7 @@ describe('Reservation tests', () => {
 
     it('should correctly return the createdAt block', () => {
         setBlockchainEnvironment(1);
-        const reservation: Reservation2 = new Reservation2(tokenAddress1, providerAddress1);
+        const reservation: Reservation = new Reservation(tokenAddress1, providerAddress1);
 
         reservation.setExpirationBlock(10);
 
@@ -139,7 +139,7 @@ describe('Reservation tests', () => {
 
     it('should correctly set the purge index', () => {
         setBlockchainEnvironment(1);
-        const reservation: Reservation2 = new Reservation2(tokenAddress1, providerAddress1);
+        const reservation: Reservation = new Reservation(tokenAddress1, providerAddress1);
 
         reservation.setPurgeIndex(10);
 
@@ -148,7 +148,7 @@ describe('Reservation tests', () => {
 
     it('should correctly return the getUserTimeoutBlockExpiration block', () => {
         setBlockchainEnvironment(1);
-        const reservation: Reservation2 = new Reservation2(tokenAddress1, providerAddress1);
+        const reservation: Reservation = new Reservation(tokenAddress1, providerAddress1);
 
         reservation.setExpirationBlock(10);
 
@@ -158,7 +158,7 @@ describe('Reservation tests', () => {
     it('should correctly set the reservedLP state', () => {
         setBlockchainEnvironment(1);
 
-        const reservation: Reservation2 = new Reservation2(tokenAddress1, providerAddress1);
+        const reservation: Reservation = new Reservation(tokenAddress1, providerAddress1);
 
         reservation.reservedLP = true;
 
@@ -173,7 +173,7 @@ describe('Reservation tests', () => {
         setBlockchainEnvironment(1);
 
         const reservationId = createReservationId(tokenAddress1, providerAddress1);
-        const reservation: Reservation2 = Reservation2.load(reservationId);
+        const reservation: Reservation = Reservation.load(reservationId);
 
         expect(reservation.reservedIndexes.getLength()).toStrictEqual(0);
         expect(reservation.reservedValues.getLength()).toStrictEqual(0);
@@ -189,7 +189,7 @@ describe('Reservation tests', () => {
         setBlockchainEnvironment(3);
 
         const reservationId: u128 = createReservationId(tokenAddress1, providerAddress1);
-        const reservation: Reservation2 = new Reservation2(tokenAddress1, providerAddress1);
+        const reservation: Reservation = new Reservation(tokenAddress1, providerAddress1);
 
         expect(reservation.reservationId).toStrictEqual(reservationId);
 
@@ -209,7 +209,7 @@ describe('Reservation tests', () => {
 
         reservation.save();
 
-        const reservation2: Reservation2 = Reservation2.load(reservationId);
+        const reservation2: Reservation = Reservation.load(reservationId);
 
         expect(reservation2.reservationId).toStrictEqual(reservationId);
 
@@ -232,7 +232,7 @@ describe('Reservation tests', () => {
     it('should delete existing reservation', () => {
         setBlockchainEnvironment(3);
         const reservationId: u128 = createReservationId(tokenAddress1, providerAddress1);
-        const reservation: Reservation2 = new Reservation2(tokenAddress1, providerAddress1);
+        const reservation: Reservation = new Reservation(tokenAddress1, providerAddress1);
 
         expect(reservation.reservationId).toStrictEqual(reservationId);
 
@@ -252,7 +252,7 @@ describe('Reservation tests', () => {
 
         reservation.save();
 
-        const reservation2: Reservation2 = Reservation2.load(reservationId);
+        const reservation2: Reservation = Reservation.load(reservationId);
 
         expect(reservation2.reservationId).toStrictEqual(reservationId);
 
@@ -282,7 +282,7 @@ describe('Reservation tests', () => {
         expect(reservation2.userTimeoutBlockExpiration).toStrictEqual(5);
 
         // Ensure deleted value are persisted
-        const reservation3: Reservation2 = Reservation2.load(reservationId);
+        const reservation3: Reservation = Reservation.load(reservationId);
 
         expect(reservation3.reservedIndexes.getLength()).toStrictEqual(0);
         expect(reservation3.reservedValues.getLength()).toStrictEqual(0);
@@ -295,7 +295,7 @@ describe('Reservation tests', () => {
 
     it('should be expired when current block > expiration block', () => {
         setBlockchainEnvironment(5);
-        const reservation: Reservation2 = new Reservation2(tokenAddress1, providerAddress1);
+        const reservation: Reservation = new Reservation(tokenAddress1, providerAddress1);
 
         reservation.setExpirationBlock(2);
 
@@ -304,7 +304,7 @@ describe('Reservation tests', () => {
 
     it('should not be expired when current block < expiration block', () => {
         setBlockchainEnvironment(5);
-        const reservation: Reservation2 = new Reservation2(tokenAddress1, providerAddress1);
+        const reservation: Reservation = new Reservation(tokenAddress1, providerAddress1);
 
         reservation.setExpirationBlock(20);
 
@@ -313,7 +313,7 @@ describe('Reservation tests', () => {
 
     it('should be valid when not expired and reservedIndexes > 0', () => {
         setBlockchainEnvironment(5);
-        const reservation: Reservation2 = new Reservation2(tokenAddress1, providerAddress1);
+        const reservation: Reservation = new Reservation(tokenAddress1, providerAddress1);
 
         reservation.setExpirationBlock(20);
         reservation.reserveAtIndex(1, u128.fromU64(1000), LIQUIDITY_REMOVAL_TYPE);
@@ -323,7 +323,7 @@ describe('Reservation tests', () => {
 
     it('should be invalid when expired and reservedIndexes > 0', () => {
         setBlockchainEnvironment(5);
-        const reservation: Reservation2 = new Reservation2(tokenAddress1, providerAddress1);
+        const reservation: Reservation = new Reservation(tokenAddress1, providerAddress1);
 
         reservation.setExpirationBlock(2);
         reservation.reserveAtIndex(1, u128.fromU64(1000), LIQUIDITY_REMOVAL_TYPE);
@@ -333,7 +333,7 @@ describe('Reservation tests', () => {
 
     it('should be invalid when expired and reservedIndexes = 0', () => {
         setBlockchainEnvironment(5);
-        const reservation: Reservation2 = new Reservation2(tokenAddress1, providerAddress1);
+        const reservation: Reservation = new Reservation(tokenAddress1, providerAddress1);
 
         reservation.setExpirationBlock(2);
 
@@ -342,7 +342,7 @@ describe('Reservation tests', () => {
 
     it('should be invalid when not expired and reservedIndexes = 0', () => {
         setBlockchainEnvironment(5);
-        const reservation: Reservation2 = new Reservation2(tokenAddress1, providerAddress1);
+        const reservation: Reservation = new Reservation(tokenAddress1, providerAddress1);
 
         reservation.setExpirationBlock(20);
 
@@ -353,7 +353,7 @@ describe('Reservation tests', () => {
         setBlockchainEnvironment(3);
 
         const reservationId: u128 = createReservationId(tokenAddress1, providerAddress1);
-        const reservation: Reservation2 = new Reservation2(tokenAddress1, providerAddress1);
+        const reservation: Reservation = new Reservation(tokenAddress1, providerAddress1);
 
         expect(reservation.reservationId).toStrictEqual(reservationId);
 

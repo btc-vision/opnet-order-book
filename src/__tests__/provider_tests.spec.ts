@@ -10,9 +10,9 @@ import {
     clearCachedProviders,
     getProvider,
     getProviderCacheLength,
-    Provider2,
+    Provider,
     saveAllProviders,
-} from '../lib/Provider2';
+} from '../lib/Provider';
 
 const providerAddress1: Address = new Address([
     68, 153, 66, 199, 127, 168, 221, 199, 156, 120, 43, 34, 88, 0, 29, 93, 123, 133, 101, 220, 185,
@@ -131,7 +131,7 @@ describe('Provider tests', () => {
 
     it('should create a new provider when provider id does not exists', () => {
         const providerId: u256 = addressToPointerU256(providerAddress1, tokenAddress1);
-        const provider: Provider2 = getProvider(providerId);
+        const provider: Provider = getProvider(providerId);
 
         expect(provider.providerId).toStrictEqual(providerId);
         expect(provider.pendingRemoval).toStrictEqual(false);
@@ -147,7 +147,7 @@ describe('Provider tests', () => {
 
     it('should correctly set provider pending state', () => {
         const providerId: u256 = addressToPointerU256(providerAddress1, tokenAddress1);
-        const provider: Provider2 = getProvider(providerId);
+        const provider: Provider = getProvider(providerId);
         provider.pendingRemoval = true;
 
         expect(provider.pendingRemoval).toStrictEqual(true);
@@ -155,7 +155,7 @@ describe('Provider tests', () => {
 
     it('should correctly set provider liquidity provider state', () => {
         const providerId: u256 = addressToPointerU256(providerAddress1, tokenAddress1);
-        const provider: Provider2 = getProvider(providerId);
+        const provider: Provider = getProvider(providerId);
         provider.isLp = true;
 
         expect(provider.isLp).toStrictEqual(true);
@@ -164,7 +164,7 @@ describe('Provider tests', () => {
     it('should correctly set provider liquidityProvided value', () => {
         const liquidityProvided: u256 = u256.fromU64(983736);
         const providerId: u256 = addressToPointerU256(providerAddress1, tokenAddress1);
-        const provider: Provider2 = getProvider(providerId);
+        const provider: Provider = getProvider(providerId);
         provider.liquidityProvided = liquidityProvided;
 
         expect(provider.liquidityProvided).toStrictEqual(liquidityProvided);
@@ -173,7 +173,7 @@ describe('Provider tests', () => {
     it('should correctly set provider liquidity value', () => {
         const liquidity: u128 = u128.fromU64(1827272);
         const providerId: u256 = addressToPointerU256(providerAddress1, tokenAddress1);
-        const provider: Provider2 = getProvider(providerId);
+        const provider: Provider = getProvider(providerId);
         provider.liquidity = liquidity;
 
         expect(provider.liquidity).toStrictEqual(liquidity);
@@ -182,7 +182,7 @@ describe('Provider tests', () => {
     it('should correctly set provider reserved value', () => {
         const reserved: u128 = u128.fromU64(4434534);
         const providerId: u256 = addressToPointerU256(providerAddress1, tokenAddress1);
-        const provider: Provider2 = getProvider(providerId);
+        const provider: Provider = getProvider(providerId);
         provider.reserved = reserved;
 
         expect(provider.reserved).toStrictEqual(reserved);
@@ -191,7 +191,7 @@ describe('Provider tests', () => {
     it('should correctly set provider btcReceiver value', () => {
         const btcReceiver: string = '0d1121291209u09hs282';
         const providerId: u256 = addressToPointerU256(providerAddress1, tokenAddress1);
-        const provider: Provider2 = getProvider(providerId);
+        const provider: Provider = getProvider(providerId);
         provider.btcReceiver = btcReceiver;
 
         expect(provider.btcReceiver).toStrictEqual(btcReceiver);
@@ -199,7 +199,7 @@ describe('Provider tests', () => {
 
     it('should correctly set provider enableLiquidityProvision state', () => {
         const providerId: u256 = addressToPointerU256(providerAddress1, tokenAddress1);
-        const provider: Provider2 = getProvider(providerId);
+        const provider: Provider = getProvider(providerId);
         provider.enableLiquidityProvision();
 
         expect(provider.canProvideLiquidity()).toStrictEqual(true);
@@ -207,7 +207,7 @@ describe('Provider tests', () => {
 
     it('should correctly set provider active and priority state to true', () => {
         const providerId: u256 = addressToPointerU256(providerAddress1, tokenAddress1);
-        const provider: Provider2 = getProvider(providerId);
+        const provider: Provider = getProvider(providerId);
         provider.setActive(true, true);
 
         expect(provider.isActive()).toStrictEqual(true);
@@ -216,7 +216,7 @@ describe('Provider tests', () => {
 
     it('should correctly set provider active state to true and priority state to false', () => {
         const providerId: u256 = addressToPointerU256(providerAddress1, tokenAddress1);
-        const provider: Provider2 = getProvider(providerId);
+        const provider: Provider = getProvider(providerId);
         provider.setActive(true, false);
 
         expect(provider.isActive()).toStrictEqual(true);
@@ -225,7 +225,7 @@ describe('Provider tests', () => {
 
     it('should correctly set provider active state to false and priority state to true', () => {
         const providerId: u256 = addressToPointerU256(providerAddress1, tokenAddress1);
-        const provider: Provider2 = getProvider(providerId);
+        const provider: Provider = getProvider(providerId);
         provider.setActive(false, true);
 
         expect(provider.isActive()).toStrictEqual(false);
@@ -234,7 +234,7 @@ describe('Provider tests', () => {
 
     it('should correctly set provider active state to false and priority state to false', () => {
         const providerId: u256 = addressToPointerU256(providerAddress1, tokenAddress1);
-        const provider: Provider2 = getProvider(providerId);
+        const provider: Provider = getProvider(providerId);
         provider.setActive(false, false);
 
         expect(provider.isActive()).toStrictEqual(false);
@@ -243,7 +243,7 @@ describe('Provider tests', () => {
 
     it('should reset a provider to default value', () => {
         const providerId: u256 = addressToPointerU256(providerAddress1, tokenAddress1);
-        const provider: Provider2 = getProvider(providerId);
+        const provider: Provider = getProvider(providerId);
         const btcReceiver: string = 'e123e2d23d233';
         const liquidityProvided: u256 = u256.fromU64(129292);
         const liquidity: u128 = u128.fromU64(131292);
@@ -272,7 +272,7 @@ describe('Provider tests', () => {
 
     it('should get a cached provider when provider id exists', () => {
         const providerId: u256 = addressToPointerU256(providerAddress1, tokenAddress1);
-        const provider: Provider2 = getProvider(providerId);
+        const provider: Provider = getProvider(providerId);
         const btcReceiver: string = 'e123e2d23d233';
         const liquidityProvided: u256 = u256.fromU64(129292);
         const liquidity: u128 = u128.fromU64(131292);
@@ -287,7 +287,7 @@ describe('Provider tests', () => {
         provider.btcReceiver = btcReceiver;
         provider.enableLiquidityProvision();
 
-        const provider2: Provider2 = getProvider(providerId);
+        const provider2: Provider = getProvider(providerId);
 
         expect(provider2).toStrictEqual(provider);
         expect(provider2.pendingRemoval).toStrictEqual(true);
@@ -303,7 +303,7 @@ describe('Provider tests', () => {
 
     it('should load a saved provider when provider id exists but not cached', () => {
         const providerId: u256 = addressToPointerU256(providerAddress1, tokenAddress1);
-        const provider: Provider2 = getProvider(providerId);
+        const provider: Provider = getProvider(providerId);
         const btcReceiver: string = 'e123e2d23d233';
         const liquidityProvided: u256 = u256.fromU64(129292);
         const liquidity: u128 = u128.fromU64(131292);
@@ -323,7 +323,7 @@ describe('Provider tests', () => {
         const cacheLength: number = getProviderCacheLength();
         expect(cacheLength).toStrictEqual(0);
 
-        const provider2: Provider2 = getProvider(providerId);
+        const provider2: Provider = getProvider(providerId);
 
         expect(provider2).not.toStrictEqual(provider);
         expect(provider2.pendingRemoval).toStrictEqual(true);
@@ -339,7 +339,7 @@ describe('Provider tests', () => {
 
     it('should load 3 different saved providers when providers id exists but not cached', () => {
         const providerId1: u256 = addressToPointerU256(providerAddress1, tokenAddress1);
-        const provider1: Provider2 = getProvider(providerId1);
+        const provider1: Provider = getProvider(providerId1);
         const btcReceiver1: string = 'e123e2d23d233';
         const liquidityProvided1: u256 = u256.fromU64(129292);
         const liquidity1: u128 = u128.fromU64(131292);
@@ -355,7 +355,7 @@ describe('Provider tests', () => {
         provider1.enableLiquidityProvision();
 
         const providerId2: u256 = addressToPointerU256(providerAddress2, tokenAddress1);
-        const provider2: Provider2 = getProvider(providerId2);
+        const provider2: Provider = getProvider(providerId2);
         const btcReceiver2: string = 'd03kd339idjkdi';
         const liquidityProvided2: u256 = u256.fromU64(837343);
         const liquidity2: u128 = u128.fromU64(56252);
@@ -371,7 +371,7 @@ describe('Provider tests', () => {
         provider2.enableLiquidityProvision();
 
         const providerId3: u256 = addressToPointerU256(providerAddress3, tokenAddress1);
-        const provider3: Provider2 = getProvider(providerId3);
+        const provider3: Provider = getProvider(providerId3);
         const btcReceiver3: string = 'peiekje0393';
         const liquidityProvided3: u256 = u256.fromU64(624262);
         const liquidity3: u128 = u128.fromU64(126367);
@@ -391,7 +391,7 @@ describe('Provider tests', () => {
         const cacheLength: number = getProviderCacheLength();
         expect(cacheLength).toStrictEqual(0);
 
-        const loadedProvider1: Provider2 = getProvider(providerId1);
+        const loadedProvider1: Provider = getProvider(providerId1);
 
         expect(loadedProvider1).not.toStrictEqual(provider1);
         expect(loadedProvider1.pendingRemoval).toStrictEqual(true);
@@ -404,7 +404,7 @@ describe('Provider tests', () => {
         expect(loadedProvider1.isActive()).toStrictEqual(true);
         expect(loadedProvider1.isPriority()).toStrictEqual(true);
 
-        const loadedProvider3: Provider2 = getProvider(providerId3);
+        const loadedProvider3: Provider = getProvider(providerId3);
 
         expect(loadedProvider3).not.toStrictEqual(provider3);
         expect(loadedProvider3.pendingRemoval).toStrictEqual(false);
@@ -417,17 +417,17 @@ describe('Provider tests', () => {
         expect(loadedProvider3.isActive()).toStrictEqual(false);
         expect(loadedProvider3.isPriority()).toStrictEqual(false);
 
-        const loadedProvider2: Provider2 = getProvider(providerId2);
+        const loadedProvider: Provider = getProvider(providerId2);
 
-        expect(loadedProvider2).not.toStrictEqual(provider2);
-        expect(loadedProvider2.pendingRemoval).toStrictEqual(false);
-        expect(loadedProvider2.isLp).toStrictEqual(true);
-        expect(loadedProvider2.liquidityProvided).toStrictEqual(liquidityProvided2);
-        expect(loadedProvider2.liquidity).toStrictEqual(liquidity2);
-        expect(loadedProvider2.reserved).toStrictEqual(reserved2);
-        expect(loadedProvider2.btcReceiver).toStrictEqual(btcReceiver2);
-        expect(loadedProvider2.canProvideLiquidity()).toStrictEqual(true);
-        expect(loadedProvider2.isActive()).toStrictEqual(true);
-        expect(loadedProvider2.isPriority()).toStrictEqual(false);
+        expect(loadedProvider).not.toStrictEqual(provider2);
+        expect(loadedProvider.pendingRemoval).toStrictEqual(false);
+        expect(loadedProvider.isLp).toStrictEqual(true);
+        expect(loadedProvider.liquidityProvided).toStrictEqual(liquidityProvided2);
+        expect(loadedProvider.liquidity).toStrictEqual(liquidity2);
+        expect(loadedProvider.reserved).toStrictEqual(reserved2);
+        expect(loadedProvider.btcReceiver).toStrictEqual(btcReceiver2);
+        expect(loadedProvider.canProvideLiquidity()).toStrictEqual(true);
+        expect(loadedProvider.isActive()).toStrictEqual(true);
+        expect(loadedProvider.isPriority()).toStrictEqual(false);
     });
 });

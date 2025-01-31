@@ -5,9 +5,9 @@ import {
     BytesWriter,
 } from '@btc-vision/btc-runtime/runtime';
 import { ripemd160, sha256 } from '@btc-vision/btc-runtime/runtime/env/global';
-import { Reservation2 } from '../lib/Reservation2';
-import { clearCachedProviders, getProvider, Provider2 } from '../lib/Provider2';
-import { ProviderManager2 } from '../lib/Liquidity/ProviderManager2';
+import { Reservation } from '../lib/Reservation';
+import { clearCachedProviders, getProvider, Provider } from '../lib/Provider';
+import { ProviderManager } from '../lib/Liquidity/ProviderManager';
 import { u128, u256 } from '@btc-vision/as-bignum/assembly';
 
 const providerAddress1: Address = new Address([
@@ -92,7 +92,7 @@ function addressToPointerU256(address: Address, token: Address): u256 {
 }
 
 function createReservationId(tokenAddress: Address, providerAddress: Address): u128 {
-    const reservationArrayId: Uint8Array = Reservation2.generateId(tokenAddress, providerAddress);
+    const reservationArrayId: Uint8Array = Reservation.generateId(tokenAddress, providerAddress);
 
     return u128.fromBytes(reservationArrayId, true);
 }
@@ -128,9 +128,9 @@ function createProvider(
     reserved: u128 = u128.fromU64(0),
     isActive: bool = true,
     isPriority: bool = false,
-): Provider2 {
+): Provider {
     const providerId: u256 = addressToPointerU256(providerAddress, tokenAddress);
-    const provider: Provider2 = getProvider(providerId);
+    const provider: Provider = getProvider(providerId);
 
     provider.setActive(isActive, isPriority);
     provider.pendingRemoval = pendingRemoval;
@@ -157,7 +157,7 @@ describe('ProviderManager tests', () => {
     });
 
     it('should create a new providermanager and initialize correctly', () => {
-        const manager: ProviderManager2 = new ProviderManager2(
+        const manager: ProviderManager = new ProviderManager(
             tokenAddress1,
             tokenIdUint8Array1,
             tokenId1,
@@ -174,7 +174,7 @@ describe('ProviderManager tests', () => {
     });
 
     it('should set the initialLiquidityProvider correctly', () => {
-        const manager: ProviderManager2 = new ProviderManager2(
+        const manager: ProviderManager = new ProviderManager(
             tokenAddress1,
             tokenIdUint8Array1,
             tokenId1,
@@ -189,7 +189,7 @@ describe('ProviderManager tests', () => {
     });
 
     it('should set the BTCowed correctly', () => {
-        const manager: ProviderManager2 = new ProviderManager2(
+        const manager: ProviderManager = new ProviderManager(
             tokenAddress1,
             tokenIdUint8Array1,
             tokenId1,
@@ -205,7 +205,7 @@ describe('ProviderManager tests', () => {
     });
 
     it('should return 0 BTCowed when no BTC owed to provider', () => {
-        const manager: ProviderManager2 = new ProviderManager2(
+        const manager: ProviderManager = new ProviderManager(
             tokenAddress1,
             tokenIdUint8Array1,
             tokenId1,
@@ -218,7 +218,7 @@ describe('ProviderManager tests', () => {
     });
 
     it('should replace the BTCowed for an existing BTC balance', () => {
-        const manager: ProviderManager2 = new ProviderManager2(
+        const manager: ProviderManager = new ProviderManager(
             tokenAddress1,
             tokenIdUint8Array1,
             tokenId1,
@@ -239,7 +239,7 @@ describe('ProviderManager tests', () => {
     });
 
     it('should set the BTCowedReserved correctly', () => {
-        const manager: ProviderManager2 = new ProviderManager2(
+        const manager: ProviderManager = new ProviderManager(
             tokenAddress1,
             tokenIdUint8Array1,
             tokenId1,
@@ -255,7 +255,7 @@ describe('ProviderManager tests', () => {
     });
 
     it('should return 0 BTCowedReserved when no BTC owed to provider', () => {
-        const manager: ProviderManager2 = new ProviderManager2(
+        const manager: ProviderManager = new ProviderManager(
             tokenAddress1,
             tokenIdUint8Array1,
             tokenId1,
@@ -268,7 +268,7 @@ describe('ProviderManager tests', () => {
     });
 
     it('should replace the BTCowedReserved for an existing BTC balance', () => {
-        const manager: ProviderManager2 = new ProviderManager2(
+        const manager: ProviderManager = new ProviderManager(
             tokenAddress1,
             tokenIdUint8Array1,
             tokenId1,
@@ -289,7 +289,7 @@ describe('ProviderManager tests', () => {
     });
 
     it('should return 0 when getFromPriorityQueue does not contains the provider index or is empty', () => {
-        const manager: ProviderManager2 = new ProviderManager2(
+        const manager: ProviderManager = new ProviderManager(
             tokenAddress1,
             tokenIdUint8Array1,
             tokenId1,
@@ -311,7 +311,7 @@ describe('ProviderManager tests', () => {
     });
 
     it('should return 0 when getFromRemovalQueue does not contains the provider index or is empty', () => {
-        const manager: ProviderManager2 = new ProviderManager2(
+        const manager: ProviderManager = new ProviderManager(
             tokenAddress1,
             tokenIdUint8Array1,
             tokenId1,
@@ -333,7 +333,7 @@ describe('ProviderManager tests', () => {
     });
 
     it('should return 0 when getFromStandardQueue does not contains the provider index or is empty', () => {
-        const manager: ProviderManager2 = new ProviderManager2(
+        const manager: ProviderManager = new ProviderManager(
             tokenAddress1,
             tokenIdUint8Array1,
             tokenId1,
@@ -355,7 +355,7 @@ describe('ProviderManager tests', () => {
     });
 
     it('should add a provider to the priority queue', () => {
-        const manager: ProviderManager2 = new ProviderManager2(
+        const manager: ProviderManager = new ProviderManager(
             tokenAddress1,
             tokenIdUint8Array1,
             tokenId1,
@@ -372,7 +372,7 @@ describe('ProviderManager tests', () => {
     });
 
     it('should add a provider to the removal queue', () => {
-        const manager: ProviderManager2 = new ProviderManager2(
+        const manager: ProviderManager = new ProviderManager(
             tokenAddress1,
             tokenIdUint8Array1,
             tokenId1,
@@ -389,7 +389,7 @@ describe('ProviderManager tests', () => {
     });
 
     it('should add a provider to the standard queue', () => {
-        const manager: ProviderManager2 = new ProviderManager2(
+        const manager: ProviderManager = new ProviderManager(
             tokenAddress1,
             tokenIdUint8Array1,
             tokenId1,
@@ -406,14 +406,14 @@ describe('ProviderManager tests', () => {
     });
 
     it('should remove a pending liquidity provider from the removal queue when removePendingLiquidityProviderFromRemovalQueue is called', () => {
-        const manager: ProviderManager2 = new ProviderManager2(
+        const manager: ProviderManager = new ProviderManager(
             tokenAddress1,
             tokenIdUint8Array1,
             tokenId1,
             STRICT_MINIMUM_PROVIDER_RESERVATION_AMOUNT,
         );
 
-        const provider1: Provider2 = createProvider(providerAddress1, tokenAddress1, true);
+        const provider1: Provider = createProvider(providerAddress1, tokenAddress1, true);
         provider1.isLp = true;
 
         manager.addToRemovalQueue(provider1.providerId);
@@ -429,7 +429,7 @@ describe('ProviderManager tests', () => {
     });
 
     it('should reset the 3 previous starting indexes to 0 when resetStartingIndex is called', () => {
-        const manager: ProviderManager2 = new ProviderManager2(
+        const manager: ProviderManager = new ProviderManager(
             tokenAddress1,
             tokenIdUint8Array1,
             tokenId1,
@@ -456,7 +456,7 @@ describe('ProviderManager tests', () => {
     // - 1 provider in pendingRemoval state and 1 provider
 
     it('should correctly set previousRemovalStartingIndex and removal queue state when cleanUpQueues is called, previousRemovalStartingIndex = 0, 1 provider', () => {
-        const manager: ProviderManager2 = new ProviderManager2(
+        const manager: ProviderManager = new ProviderManager(
             tokenAddress1,
             tokenIdUint8Array1,
             tokenId1,
@@ -466,7 +466,7 @@ describe('ProviderManager tests', () => {
         expect(manager.previousRemovalStartingIndex).toStrictEqual(0);
         expect(manager.removalQueueLength).toStrictEqual(0);
 
-        const provider1: Provider2 = createProvider(providerAddress1, tokenAddress1);
+        const provider1: Provider = createProvider(providerAddress1, tokenAddress1);
 
         manager.addToRemovalQueue(provider1.providerId);
 
@@ -480,7 +480,7 @@ describe('ProviderManager tests', () => {
     });
 
     it('should correctly set previousRemovalStartingIndex and removal queue state when cleanUpQueues is called, previousRemovalStartingIndex = 0, 1 provider in pending removal', () => {
-        const manager: ProviderManager2 = new ProviderManager2(
+        const manager: ProviderManager = new ProviderManager(
             tokenAddress1,
             tokenIdUint8Array1,
             tokenId1,
@@ -490,7 +490,7 @@ describe('ProviderManager tests', () => {
         expect(manager.previousRemovalStartingIndex).toStrictEqual(0);
         expect(manager.removalQueueLength).toStrictEqual(0);
 
-        const provider1: Provider2 = createProvider(providerAddress1, tokenAddress1, true);
+        const provider1: Provider = createProvider(providerAddress1, tokenAddress1, true);
 
         manager.addToRemovalQueue(provider1.providerId);
 
@@ -504,7 +504,7 @@ describe('ProviderManager tests', () => {
     });
 
     it('should correctly set previousRemovalStartingIndex and removal queue state when cleanUpQueues is called, previousRemovalStartingIndex = 0, 1 provider and 1 provider in pendingRemoval state', () => {
-        const manager: ProviderManager2 = new ProviderManager2(
+        const manager: ProviderManager = new ProviderManager(
             tokenAddress1,
             tokenIdUint8Array1,
             tokenId1,
@@ -514,8 +514,8 @@ describe('ProviderManager tests', () => {
         expect(manager.previousRemovalStartingIndex).toStrictEqual(0);
         expect(manager.removalQueueLength).toStrictEqual(0);
 
-        const provider1: Provider2 = createProvider(providerAddress1, tokenAddress1);
-        const provider2: Provider2 = createProvider(providerAddress2, tokenAddress1, true);
+        const provider1: Provider = createProvider(providerAddress1, tokenAddress1);
+        const provider2: Provider = createProvider(providerAddress2, tokenAddress1, true);
 
         manager.addToRemovalQueue(provider1.providerId);
         manager.addToRemovalQueue(provider2.providerId);
@@ -531,7 +531,7 @@ describe('ProviderManager tests', () => {
     });
 
     it('should correctly set previousRemovalStartingIndex and removal queue state when cleanUpQueues is called, previousRemovalStartingIndex = 0, 2 provider not in pendingRemoval state', () => {
-        const manager: ProviderManager2 = new ProviderManager2(
+        const manager: ProviderManager = new ProviderManager(
             tokenAddress1,
             tokenIdUint8Array1,
             tokenId1,
@@ -541,8 +541,8 @@ describe('ProviderManager tests', () => {
         expect(manager.previousRemovalStartingIndex).toStrictEqual(0);
         expect(manager.removalQueueLength).toStrictEqual(0);
 
-        const provider1: Provider2 = createProvider(providerAddress1, tokenAddress1);
-        const provider2: Provider2 = createProvider(providerAddress2, tokenAddress1);
+        const provider1: Provider = createProvider(providerAddress1, tokenAddress1);
+        const provider2: Provider = createProvider(providerAddress2, tokenAddress1);
 
         manager.addToRemovalQueue(provider1.providerId);
         manager.addToRemovalQueue(provider2.providerId);
@@ -558,7 +558,7 @@ describe('ProviderManager tests', () => {
     });
 
     it('should correctly set previousRemovalStartingIndex and removal queue state when cleanUpQueues is called, previousRemovalStartingIndex = 0, 1 provider in pendingRemoval state and 1 provider', () => {
-        const manager: ProviderManager2 = new ProviderManager2(
+        const manager: ProviderManager = new ProviderManager(
             tokenAddress1,
             tokenIdUint8Array1,
             tokenId1,
@@ -568,8 +568,8 @@ describe('ProviderManager tests', () => {
         expect(manager.previousRemovalStartingIndex).toStrictEqual(0);
         expect(manager.removalQueueLength).toStrictEqual(0);
 
-        const provider1: Provider2 = createProvider(providerAddress1, tokenAddress1, true);
-        const provider2: Provider2 = createProvider(providerAddress2, tokenAddress1);
+        const provider1: Provider = createProvider(providerAddress1, tokenAddress1, true);
+        const provider2: Provider = createProvider(providerAddress2, tokenAddress1);
 
         manager.addToRemovalQueue(provider1.providerId);
         manager.addToRemovalQueue(provider2.providerId);
@@ -585,7 +585,7 @@ describe('ProviderManager tests', () => {
     });
 
     it('should correctly set previousRemovalStartingIndex and removal queue state when cleanUpQueues is called, previousRemovalStartingIndex = 0, 2 providers in pendingRemoval state', () => {
-        const manager: ProviderManager2 = new ProviderManager2(
+        const manager: ProviderManager = new ProviderManager(
             tokenAddress1,
             tokenIdUint8Array1,
             tokenId1,
@@ -595,8 +595,8 @@ describe('ProviderManager tests', () => {
         expect(manager.previousRemovalStartingIndex).toStrictEqual(0);
         expect(manager.removalQueueLength).toStrictEqual(0);
 
-        const provider1: Provider2 = createProvider(providerAddress1, tokenAddress1, true);
-        const provider2: Provider2 = createProvider(providerAddress2, tokenAddress1, true);
+        const provider1: Provider = createProvider(providerAddress1, tokenAddress1, true);
+        const provider2: Provider = createProvider(providerAddress2, tokenAddress1, true);
 
         manager.addToRemovalQueue(provider1.providerId);
         manager.addToRemovalQueue(provider2.providerId);
@@ -612,14 +612,14 @@ describe('ProviderManager tests', () => {
     });
 
     it('should correctly set previousRemovalStartingIndex and removal queue state when cleanUpQueues is called, previousRemovalStartingIndex <> 0, 1 provider', () => {
-        const manager: ProviderManager2 = new ProviderManager2(
+        const manager: ProviderManager = new ProviderManager(
             tokenAddress1,
             tokenIdUint8Array1,
             tokenId1,
             STRICT_MINIMUM_PROVIDER_RESERVATION_AMOUNT,
         );
 
-        const provider1: Provider2 = createProvider(providerAddress1, tokenAddress1);
+        const provider1: Provider = createProvider(providerAddress1, tokenAddress1);
         manager.addToRemovalQueue(provider1.providerId);
         expect(manager.removalQueueLength).toStrictEqual(1);
 
@@ -628,7 +628,7 @@ describe('ProviderManager tests', () => {
         expect(manager.previousRemovalStartingIndex).toStrictEqual(1);
         expect(manager.removalQueueLength).toStrictEqual(1);
 
-        const provider2: Provider2 = createProvider(providerAddress2, tokenAddress1);
+        const provider2: Provider = createProvider(providerAddress2, tokenAddress1);
 
         manager.addToRemovalQueue(provider2.providerId);
         expect(manager.removalQueueLength).toStrictEqual(2);
@@ -641,14 +641,14 @@ describe('ProviderManager tests', () => {
     });
 
     it('should correctly set previousRemovalStartingIndex and removal queue state when cleanUpQueues is called, previousRemovalStartingIndex <> 0, 1 provider in pending removal', () => {
-        const manager: ProviderManager2 = new ProviderManager2(
+        const manager: ProviderManager = new ProviderManager(
             tokenAddress1,
             tokenIdUint8Array1,
             tokenId1,
             STRICT_MINIMUM_PROVIDER_RESERVATION_AMOUNT,
         );
 
-        const provider1: Provider2 = createProvider(providerAddress1, tokenAddress1);
+        const provider1: Provider = createProvider(providerAddress1, tokenAddress1);
         manager.addToRemovalQueue(provider1.providerId);
         expect(manager.removalQueueLength).toStrictEqual(1);
 
@@ -657,7 +657,7 @@ describe('ProviderManager tests', () => {
         expect(manager.previousRemovalStartingIndex).toStrictEqual(1);
         expect(manager.removalQueueLength).toStrictEqual(1);
 
-        const provider2: Provider2 = createProvider(providerAddress1, tokenAddress1, true);
+        const provider2: Provider = createProvider(providerAddress1, tokenAddress1, true);
 
         manager.addToRemovalQueue(provider2.providerId);
 
@@ -672,14 +672,14 @@ describe('ProviderManager tests', () => {
     });
 
     it('should correctly set previousRemovalStartingIndex and removal queue state when cleanUpQueues is called, previousRemovalStartingIndex <> 0, 1 provider and 1 provider in pendingRemoval state', () => {
-        const manager: ProviderManager2 = new ProviderManager2(
+        const manager: ProviderManager = new ProviderManager(
             tokenAddress1,
             tokenIdUint8Array1,
             tokenId1,
             STRICT_MINIMUM_PROVIDER_RESERVATION_AMOUNT,
         );
 
-        const provider1: Provider2 = createProvider(providerAddress1, tokenAddress1);
+        const provider1: Provider = createProvider(providerAddress1, tokenAddress1);
         manager.addToRemovalQueue(provider1.providerId);
         expect(manager.removalQueueLength).toStrictEqual(1);
 
@@ -688,8 +688,8 @@ describe('ProviderManager tests', () => {
         expect(manager.previousRemovalStartingIndex).toStrictEqual(1);
         expect(manager.removalQueueLength).toStrictEqual(1);
 
-        const provider2: Provider2 = createProvider(providerAddress2, tokenAddress1);
-        const provider3: Provider2 = createProvider(providerAddress3, tokenAddress1, true);
+        const provider2: Provider = createProvider(providerAddress2, tokenAddress1);
+        const provider3: Provider = createProvider(providerAddress3, tokenAddress1, true);
 
         manager.addToRemovalQueue(provider2.providerId);
         manager.addToRemovalQueue(provider3.providerId);
@@ -706,13 +706,13 @@ describe('ProviderManager tests', () => {
     });
 
     it('should correctly set previousRemovalStartingIndex and removal queue state when cleanUpQueues is called, previousRemovalStartingIndex <> 0, 2 provider not in pendingRemoval state', () => {
-        const manager: ProviderManager2 = new ProviderManager2(
+        const manager: ProviderManager = new ProviderManager(
             tokenAddress1,
             tokenIdUint8Array1,
             tokenId1,
             STRICT_MINIMUM_PROVIDER_RESERVATION_AMOUNT,
         );
-        const provider1: Provider2 = createProvider(providerAddress1, tokenAddress1);
+        const provider1: Provider = createProvider(providerAddress1, tokenAddress1);
         manager.addToRemovalQueue(provider1.providerId);
         expect(manager.removalQueueLength).toStrictEqual(1);
 
@@ -721,8 +721,8 @@ describe('ProviderManager tests', () => {
         expect(manager.previousRemovalStartingIndex).toStrictEqual(1);
         expect(manager.removalQueueLength).toStrictEqual(1);
 
-        const provider2: Provider2 = createProvider(providerAddress2, tokenAddress1);
-        const provider3: Provider2 = createProvider(providerAddress3, tokenAddress1);
+        const provider2: Provider = createProvider(providerAddress2, tokenAddress1);
+        const provider3: Provider = createProvider(providerAddress3, tokenAddress1);
 
         manager.addToRemovalQueue(provider2.providerId);
         manager.addToRemovalQueue(provider3.providerId);
@@ -739,13 +739,13 @@ describe('ProviderManager tests', () => {
     });
 
     it('should correctly set previousRemovalStartingIndex and removal queue state when cleanUpQueues is called, previousRemovalStartingIndex <> 0, 1 provider in pendingRemoval state and 1 provider', () => {
-        const manager: ProviderManager2 = new ProviderManager2(
+        const manager: ProviderManager = new ProviderManager(
             tokenAddress1,
             tokenIdUint8Array1,
             tokenId1,
             STRICT_MINIMUM_PROVIDER_RESERVATION_AMOUNT,
         );
-        const provider1: Provider2 = createProvider(providerAddress1, tokenAddress1);
+        const provider1: Provider = createProvider(providerAddress1, tokenAddress1);
         manager.addToRemovalQueue(provider1.providerId);
         expect(manager.removalQueueLength).toStrictEqual(1);
 
@@ -754,8 +754,8 @@ describe('ProviderManager tests', () => {
         expect(manager.previousRemovalStartingIndex).toStrictEqual(1);
         expect(manager.removalQueueLength).toStrictEqual(1);
 
-        const provider2: Provider2 = createProvider(providerAddress2, tokenAddress1, true);
-        const provider3: Provider2 = createProvider(providerAddress3, tokenAddress1);
+        const provider2: Provider = createProvider(providerAddress2, tokenAddress1, true);
+        const provider3: Provider = createProvider(providerAddress3, tokenAddress1);
 
         manager.addToRemovalQueue(provider2.providerId);
         manager.addToRemovalQueue(provider3.providerId);
@@ -772,13 +772,13 @@ describe('ProviderManager tests', () => {
     });
 
     it('should correctly set previousRemovalStartingIndex and removal queue state when cleanUpQueues is called, previousRemovalStartingIndex <> 0, 2 providers in pendingRemoval state', () => {
-        const manager: ProviderManager2 = new ProviderManager2(
+        const manager: ProviderManager = new ProviderManager(
             tokenAddress1,
             tokenIdUint8Array1,
             tokenId1,
             STRICT_MINIMUM_PROVIDER_RESERVATION_AMOUNT,
         );
-        const provider1: Provider2 = createProvider(providerAddress1, tokenAddress1);
+        const provider1: Provider = createProvider(providerAddress1, tokenAddress1);
         manager.addToRemovalQueue(provider1.providerId);
         expect(manager.removalQueueLength).toStrictEqual(1);
 
@@ -787,8 +787,8 @@ describe('ProviderManager tests', () => {
         expect(manager.previousRemovalStartingIndex).toStrictEqual(1);
         expect(manager.removalQueueLength).toStrictEqual(1);
 
-        const provider2: Provider2 = createProvider(providerAddress1, tokenAddress1, true);
-        const provider3: Provider2 = createProvider(providerAddress2, tokenAddress1, true);
+        const provider2: Provider = createProvider(providerAddress1, tokenAddress1, true);
+        const provider3: Provider = createProvider(providerAddress2, tokenAddress1, true);
 
         manager.addToRemovalQueue(provider2.providerId);
         manager.addToRemovalQueue(provider3.providerId);
@@ -805,13 +805,13 @@ describe('ProviderManager tests', () => {
     });
 
     it('should correctly set previousRemovalStartingIndex and removal queue state when cleanUpQueues is called, previousRemovalStartingIndex <> 0, 1 provider in pendingRemoval state and 1 provider', () => {
-        const manager: ProviderManager2 = new ProviderManager2(
+        const manager: ProviderManager = new ProviderManager(
             tokenAddress1,
             tokenIdUint8Array1,
             tokenId1,
             STRICT_MINIMUM_PROVIDER_RESERVATION_AMOUNT,
         );
-        const provider1: Provider2 = createProvider(providerAddress1, tokenAddress1);
+        const provider1: Provider = createProvider(providerAddress1, tokenAddress1);
         manager.addToRemovalQueue(provider1.providerId);
         expect(manager.removalQueueLength).toStrictEqual(1);
 
@@ -820,8 +820,8 @@ describe('ProviderManager tests', () => {
         expect(manager.previousRemovalStartingIndex).toStrictEqual(1);
         expect(manager.removalQueueLength).toStrictEqual(1);
 
-        const provider2: Provider2 = createProvider(providerAddress1, tokenAddress1, true);
-        const provider3: Provider2 = createProvider(providerAddress2, tokenAddress1);
+        const provider2: Provider = createProvider(providerAddress1, tokenAddress1, true);
+        const provider3: Provider = createProvider(providerAddress2, tokenAddress1);
 
         manager.addToRemovalQueue(provider2.providerId);
         manager.addToRemovalQueue(provider3.providerId);
@@ -838,7 +838,7 @@ describe('ProviderManager tests', () => {
     });
 
     it('should correctly set previousReservationStartingIndex and priority queue state when cleanUpQueues is called, previousReservationStartingIndex = 0, 1 provider not active', () => {
-        const manager: ProviderManager2 = new ProviderManager2(
+        const manager: ProviderManager = new ProviderManager(
             tokenAddress1,
             tokenIdUint8Array1,
             tokenId1,
@@ -848,7 +848,7 @@ describe('ProviderManager tests', () => {
         expect(manager.previousReservationStartingIndex).toStrictEqual(0);
         expect(manager.priorityQueueLength).toStrictEqual(0);
 
-        const provider1: Provider2 = createProvider(providerAddress1, tokenAddress1);
+        const provider1: Provider = createProvider(providerAddress1, tokenAddress1);
         provider1.setActive(false, true);
 
         manager.addToPriorityQueue(provider1.providerId);
@@ -863,7 +863,7 @@ describe('ProviderManager tests', () => {
     });
 
     it('should correctly set previousReservationStartingIndex and priority queue state when cleanUpQueues is called, previousReservationStartingIndex = 0, 1 provider active', () => {
-        const manager: ProviderManager2 = new ProviderManager2(
+        const manager: ProviderManager = new ProviderManager(
             tokenAddress1,
             tokenIdUint8Array1,
             tokenId1,
@@ -873,7 +873,7 @@ describe('ProviderManager tests', () => {
         expect(manager.previousReservationStartingIndex).toStrictEqual(0);
         expect(manager.priorityQueueLength).toStrictEqual(0);
 
-        const provider1: Provider2 = createProvider(providerAddress1, tokenAddress1);
+        const provider1: Provider = createProvider(providerAddress1, tokenAddress1);
         provider1.setActive(true, true);
 
         manager.addToPriorityQueue(provider1.providerId);
@@ -888,7 +888,7 @@ describe('ProviderManager tests', () => {
     });
 
     it('should correctly set previousReservationStartingIndex and priority queue state when cleanUpQueues is called, previousReservationStartingIndex = 0, 1 provider not active and 1 provider active', () => {
-        const manager: ProviderManager2 = new ProviderManager2(
+        const manager: ProviderManager = new ProviderManager(
             tokenAddress1,
             tokenIdUint8Array1,
             tokenId1,
@@ -898,10 +898,10 @@ describe('ProviderManager tests', () => {
         expect(manager.previousReservationStartingIndex).toStrictEqual(0);
         expect(manager.priorityQueueLength).toStrictEqual(0);
 
-        const provider1: Provider2 = createProvider(providerAddress1, tokenAddress1);
+        const provider1: Provider = createProvider(providerAddress1, tokenAddress1);
         provider1.setActive(false, true);
 
-        const provider2: Provider2 = createProvider(providerAddress2, tokenAddress1);
+        const provider2: Provider = createProvider(providerAddress2, tokenAddress1);
         provider2.setActive(true, true);
 
         manager.addToPriorityQueue(provider1.providerId);
@@ -918,7 +918,7 @@ describe('ProviderManager tests', () => {
     });
 
     it('should correctly set previousReservationStartingIndex and priority queue state when cleanUpQueues is called, previousReservationStartingIndex = 0, 2 provider not active', () => {
-        const manager: ProviderManager2 = new ProviderManager2(
+        const manager: ProviderManager = new ProviderManager(
             tokenAddress1,
             tokenIdUint8Array1,
             tokenId1,
@@ -928,10 +928,10 @@ describe('ProviderManager tests', () => {
         expect(manager.previousReservationStartingIndex).toStrictEqual(0);
         expect(manager.priorityQueueLength).toStrictEqual(0);
 
-        const provider1: Provider2 = createProvider(providerAddress1, tokenAddress1);
+        const provider1: Provider = createProvider(providerAddress1, tokenAddress1);
         provider1.setActive(false, true);
 
-        const provider2: Provider2 = createProvider(providerAddress2, tokenAddress1);
+        const provider2: Provider = createProvider(providerAddress2, tokenAddress1);
         provider2.setActive(false, true);
 
         manager.addToPriorityQueue(provider1.providerId);
@@ -948,7 +948,7 @@ describe('ProviderManager tests', () => {
     });
 
     it('should correctly set previousReservationStartingIndex and priority queue state when cleanUpQueues is called, previousReservationStartingIndex = 0, 1 provider active and 1 provider not active', () => {
-        const manager: ProviderManager2 = new ProviderManager2(
+        const manager: ProviderManager = new ProviderManager(
             tokenAddress1,
             tokenIdUint8Array1,
             tokenId1,
@@ -958,10 +958,10 @@ describe('ProviderManager tests', () => {
         expect(manager.previousReservationStartingIndex).toStrictEqual(0);
         expect(manager.priorityQueueLength).toStrictEqual(0);
 
-        const provider1: Provider2 = createProvider(providerAddress1, tokenAddress1);
+        const provider1: Provider = createProvider(providerAddress1, tokenAddress1);
         provider1.setActive(true, true);
 
-        const provider2: Provider2 = createProvider(providerAddress2, tokenAddress1);
+        const provider2: Provider = createProvider(providerAddress2, tokenAddress1);
         provider2.setActive(false, true);
 
         manager.addToPriorityQueue(provider1.providerId);
@@ -978,7 +978,7 @@ describe('ProviderManager tests', () => {
     });
 
     it('should correctly set previousReservationStartingIndex and priority queue state when cleanUpQueues is called, previousReservationStartingIndex = 0, 2 providers active', () => {
-        const manager: ProviderManager2 = new ProviderManager2(
+        const manager: ProviderManager = new ProviderManager(
             tokenAddress1,
             tokenIdUint8Array1,
             tokenId1,
@@ -988,10 +988,10 @@ describe('ProviderManager tests', () => {
         expect(manager.previousReservationStartingIndex).toStrictEqual(0);
         expect(manager.priorityQueueLength).toStrictEqual(0);
 
-        const provider1: Provider2 = createProvider(providerAddress1, tokenAddress1);
+        const provider1: Provider = createProvider(providerAddress1, tokenAddress1);
         provider1.setActive(true, true);
 
-        const provider2: Provider2 = createProvider(providerAddress2, tokenAddress1);
+        const provider2: Provider = createProvider(providerAddress2, tokenAddress1);
         provider2.setActive(true, true);
 
         manager.addToPriorityQueue(provider1.providerId);
@@ -1008,14 +1008,14 @@ describe('ProviderManager tests', () => {
     });
 
     it('should correctly set previousReservationStartingIndex and priority queue state when cleanUpQueues is called, previousReservationStartingIndex <> 0, 1 provider not active', () => {
-        const manager: ProviderManager2 = new ProviderManager2(
+        const manager: ProviderManager = new ProviderManager(
             tokenAddress1,
             tokenIdUint8Array1,
             tokenId1,
             STRICT_MINIMUM_PROVIDER_RESERVATION_AMOUNT,
         );
 
-        const provider1: Provider2 = createProvider(providerAddress1, tokenAddress1);
+        const provider1: Provider = createProvider(providerAddress1, tokenAddress1);
         provider1.setActive(false, true);
 
         manager.addToPriorityQueue(provider1.providerId);
@@ -1026,7 +1026,7 @@ describe('ProviderManager tests', () => {
         expect(manager.previousReservationStartingIndex).toStrictEqual(1);
         expect(manager.priorityQueueLength).toStrictEqual(1);
 
-        const provider2: Provider2 = createProvider(providerAddress2, tokenAddress1);
+        const provider2: Provider = createProvider(providerAddress2, tokenAddress1);
         provider2.setActive(false, true);
 
         manager.addToPriorityQueue(provider2.providerId);
@@ -1041,14 +1041,14 @@ describe('ProviderManager tests', () => {
     });
 
     it('should correctly set previousReservationStartingIndex and priority queue state when cleanUpQueues is called, previousReservationStartingIndex <> 0, 1 provider active', () => {
-        const manager: ProviderManager2 = new ProviderManager2(
+        const manager: ProviderManager = new ProviderManager(
             tokenAddress1,
             tokenIdUint8Array1,
             tokenId1,
             STRICT_MINIMUM_PROVIDER_RESERVATION_AMOUNT,
         );
 
-        const provider1: Provider2 = createProvider(providerAddress1, tokenAddress1);
+        const provider1: Provider = createProvider(providerAddress1, tokenAddress1);
         provider1.setActive(false, true);
 
         manager.addToPriorityQueue(provider1.providerId);
@@ -1059,7 +1059,7 @@ describe('ProviderManager tests', () => {
         expect(manager.previousReservationStartingIndex).toStrictEqual(1);
         expect(manager.priorityQueueLength).toStrictEqual(1);
 
-        const provider2: Provider2 = createProvider(providerAddress1, tokenAddress1);
+        const provider2: Provider = createProvider(providerAddress1, tokenAddress1);
         provider2.setActive(true, true);
 
         manager.addToPriorityQueue(provider2.providerId);
@@ -1075,14 +1075,14 @@ describe('ProviderManager tests', () => {
     });
 
     it('should correctly set previousReservationStartingIndex and priority queue state when cleanUpQueues is called, previousReservationStartingIndex <> 0, 1 provider not active and 1 provider active', () => {
-        const manager: ProviderManager2 = new ProviderManager2(
+        const manager: ProviderManager = new ProviderManager(
             tokenAddress1,
             tokenIdUint8Array1,
             tokenId1,
             STRICT_MINIMUM_PROVIDER_RESERVATION_AMOUNT,
         );
 
-        const provider1: Provider2 = createProvider(providerAddress1, tokenAddress1);
+        const provider1: Provider = createProvider(providerAddress1, tokenAddress1);
         provider1.setActive(false, true);
 
         manager.addToPriorityQueue(provider1.providerId);
@@ -1093,10 +1093,10 @@ describe('ProviderManager tests', () => {
         expect(manager.previousReservationStartingIndex).toStrictEqual(1);
         expect(manager.priorityQueueLength).toStrictEqual(1);
 
-        const provider2: Provider2 = createProvider(providerAddress2, tokenAddress1);
+        const provider2: Provider = createProvider(providerAddress2, tokenAddress1);
         provider2.setActive(false, true);
 
-        const provider3: Provider2 = createProvider(providerAddress3, tokenAddress1);
+        const provider3: Provider = createProvider(providerAddress3, tokenAddress1);
         provider3.setActive(true, true);
 
         manager.addToPriorityQueue(provider2.providerId);
@@ -1114,13 +1114,13 @@ describe('ProviderManager tests', () => {
     });
 
     it('should correctly set previousReservationStartingIndex and priority queue state when cleanUpQueues is called, previousReservationStartingIndex <> 0, 2 provider not active', () => {
-        const manager: ProviderManager2 = new ProviderManager2(
+        const manager: ProviderManager = new ProviderManager(
             tokenAddress1,
             tokenIdUint8Array1,
             tokenId1,
             STRICT_MINIMUM_PROVIDER_RESERVATION_AMOUNT,
         );
-        const provider1: Provider2 = createProvider(providerAddress1, tokenAddress1);
+        const provider1: Provider = createProvider(providerAddress1, tokenAddress1);
         provider1.setActive(false, true);
 
         manager.addToPriorityQueue(provider1.providerId);
@@ -1131,10 +1131,10 @@ describe('ProviderManager tests', () => {
         expect(manager.previousReservationStartingIndex).toStrictEqual(1);
         expect(manager.priorityQueueLength).toStrictEqual(1);
 
-        const provider2: Provider2 = createProvider(providerAddress2, tokenAddress1);
+        const provider2: Provider = createProvider(providerAddress2, tokenAddress1);
         provider2.setActive(false, true);
 
-        const provider3: Provider2 = createProvider(providerAddress3, tokenAddress1);
+        const provider3: Provider = createProvider(providerAddress3, tokenAddress1);
         provider3.setActive(false, true);
 
         manager.addToPriorityQueue(provider2.providerId);
@@ -1152,13 +1152,13 @@ describe('ProviderManager tests', () => {
     });
 
     it('should correctly set previousReservationStartingIndex and priority queue state when cleanUpQueues is called, previousReservationStartingIndex <> 0, 1 provider active and 1 provider not active', () => {
-        const manager: ProviderManager2 = new ProviderManager2(
+        const manager: ProviderManager = new ProviderManager(
             tokenAddress1,
             tokenIdUint8Array1,
             tokenId1,
             STRICT_MINIMUM_PROVIDER_RESERVATION_AMOUNT,
         );
-        const provider1: Provider2 = createProvider(providerAddress1, tokenAddress1);
+        const provider1: Provider = createProvider(providerAddress1, tokenAddress1);
         provider1.setActive(false, true);
 
         manager.addToPriorityQueue(provider1.providerId);
@@ -1169,10 +1169,10 @@ describe('ProviderManager tests', () => {
         expect(manager.previousReservationStartingIndex).toStrictEqual(1);
         expect(manager.priorityQueueLength).toStrictEqual(1);
 
-        const provider2: Provider2 = createProvider(providerAddress2, tokenAddress1);
+        const provider2: Provider = createProvider(providerAddress2, tokenAddress1);
         provider2.setActive(true, true);
 
-        const provider3: Provider2 = createProvider(providerAddress3, tokenAddress1);
+        const provider3: Provider = createProvider(providerAddress3, tokenAddress1);
         provider3.setActive(false, true);
 
         manager.addToPriorityQueue(provider2.providerId);
@@ -1190,13 +1190,13 @@ describe('ProviderManager tests', () => {
     });
 
     it('should correctly set previousReservationStartingIndex and priority queue state when cleanUpQueues is called, previousReservationStartingIndex <> 0, 2 providers active', () => {
-        const manager: ProviderManager2 = new ProviderManager2(
+        const manager: ProviderManager = new ProviderManager(
             tokenAddress1,
             tokenIdUint8Array1,
             tokenId1,
             STRICT_MINIMUM_PROVIDER_RESERVATION_AMOUNT,
         );
-        const provider1: Provider2 = createProvider(providerAddress1, tokenAddress1);
+        const provider1: Provider = createProvider(providerAddress1, tokenAddress1);
         provider1.setActive(false, true);
 
         manager.addToPriorityQueue(provider1.providerId);
@@ -1207,10 +1207,10 @@ describe('ProviderManager tests', () => {
         expect(manager.previousReservationStartingIndex).toStrictEqual(1);
         expect(manager.priorityQueueLength).toStrictEqual(1);
 
-        const provider2: Provider2 = createProvider(providerAddress1, tokenAddress1, true);
+        const provider2: Provider = createProvider(providerAddress1, tokenAddress1, true);
         provider2.setActive(true, true);
 
-        const provider3: Provider2 = createProvider(providerAddress2, tokenAddress1, true);
+        const provider3: Provider = createProvider(providerAddress2, tokenAddress1, true);
         provider3.setActive(true, true);
 
         manager.addToPriorityQueue(provider2.providerId);
@@ -1228,13 +1228,13 @@ describe('ProviderManager tests', () => {
     });
 
     it('should correctly set previousReservationStartingIndex and priority queue state when cleanUpQueues is called, previousReservationStartingIndex <> 0, 1 provider active state and 1 provider not active', () => {
-        const manager: ProviderManager2 = new ProviderManager2(
+        const manager: ProviderManager = new ProviderManager(
             tokenAddress1,
             tokenIdUint8Array1,
             tokenId1,
             STRICT_MINIMUM_PROVIDER_RESERVATION_AMOUNT,
         );
-        const provider1: Provider2 = createProvider(providerAddress1, tokenAddress1);
+        const provider1: Provider = createProvider(providerAddress1, tokenAddress1);
         provider1.setActive(false, true);
 
         manager.addToPriorityQueue(provider1.providerId);
@@ -1245,10 +1245,10 @@ describe('ProviderManager tests', () => {
         expect(manager.previousReservationStartingIndex).toStrictEqual(1);
         expect(manager.priorityQueueLength).toStrictEqual(1);
 
-        const provider2: Provider2 = createProvider(providerAddress1, tokenAddress1);
+        const provider2: Provider = createProvider(providerAddress1, tokenAddress1);
         provider2.setActive(true, true);
 
-        const provider3: Provider2 = createProvider(providerAddress2, tokenAddress1);
+        const provider3: Provider = createProvider(providerAddress2, tokenAddress1);
         provider3.setActive(false, true);
 
         manager.addToPriorityQueue(provider2.providerId);
@@ -1266,7 +1266,7 @@ describe('ProviderManager tests', () => {
     });
 
     it('should correctly set previousReservationStandardStartingIndex and priority queue state when cleanUpQueues is called, previousReservationStandardStartingIndex = 0, 1 provider not active', () => {
-        const manager: ProviderManager2 = new ProviderManager2(
+        const manager: ProviderManager = new ProviderManager(
             tokenAddress1,
             tokenIdUint8Array1,
             tokenId1,
@@ -1276,7 +1276,7 @@ describe('ProviderManager tests', () => {
         expect(manager.previousReservationStandardStartingIndex).toStrictEqual(0);
         expect(manager.standardQueueLength).toStrictEqual(0);
 
-        const provider1: Provider2 = createProvider(providerAddress1, tokenAddress1);
+        const provider1: Provider = createProvider(providerAddress1, tokenAddress1);
         provider1.setActive(false, true);
 
         manager.addToStandardQueue(provider1.providerId);
@@ -1291,7 +1291,7 @@ describe('ProviderManager tests', () => {
     });
 
     it('should correctly set previousReservationStandardStartingIndex and priority queue state when cleanUpQueues is called, previousReservationStandardStartingIndex = 0, 1 provider active', () => {
-        const manager: ProviderManager2 = new ProviderManager2(
+        const manager: ProviderManager = new ProviderManager(
             tokenAddress1,
             tokenIdUint8Array1,
             tokenId1,
@@ -1301,7 +1301,7 @@ describe('ProviderManager tests', () => {
         expect(manager.previousReservationStandardStartingIndex).toStrictEqual(0);
         expect(manager.standardQueueLength).toStrictEqual(0);
 
-        const provider1: Provider2 = createProvider(providerAddress1, tokenAddress1);
+        const provider1: Provider = createProvider(providerAddress1, tokenAddress1);
         provider1.setActive(true, true);
 
         manager.addToStandardQueue(provider1.providerId);
@@ -1316,7 +1316,7 @@ describe('ProviderManager tests', () => {
     });
 
     it('should correctly set previousReservationStandardStartingIndex and priority queue state when cleanUpQueues is called, previousReservationStandardStartingIndex = 0, 1 provider not active and 1 provider active', () => {
-        const manager: ProviderManager2 = new ProviderManager2(
+        const manager: ProviderManager = new ProviderManager(
             tokenAddress1,
             tokenIdUint8Array1,
             tokenId1,
@@ -1326,10 +1326,10 @@ describe('ProviderManager tests', () => {
         expect(manager.previousReservationStandardStartingIndex).toStrictEqual(0);
         expect(manager.standardQueueLength).toStrictEqual(0);
 
-        const provider1: Provider2 = createProvider(providerAddress1, tokenAddress1);
+        const provider1: Provider = createProvider(providerAddress1, tokenAddress1);
         provider1.setActive(false, true);
 
-        const provider2: Provider2 = createProvider(providerAddress2, tokenAddress1);
+        const provider2: Provider = createProvider(providerAddress2, tokenAddress1);
         provider2.setActive(true, true);
 
         manager.addToStandardQueue(provider1.providerId);
@@ -1346,7 +1346,7 @@ describe('ProviderManager tests', () => {
     });
 
     it('should correctly set previousReservationStandardStartingIndex and priority queue state when cleanUpQueues is called, previousReservationStandardStartingIndex = 0, 2 provider not active', () => {
-        const manager: ProviderManager2 = new ProviderManager2(
+        const manager: ProviderManager = new ProviderManager(
             tokenAddress1,
             tokenIdUint8Array1,
             tokenId1,
@@ -1356,10 +1356,10 @@ describe('ProviderManager tests', () => {
         expect(manager.previousReservationStandardStartingIndex).toStrictEqual(0);
         expect(manager.standardQueueLength).toStrictEqual(0);
 
-        const provider1: Provider2 = createProvider(providerAddress1, tokenAddress1);
+        const provider1: Provider = createProvider(providerAddress1, tokenAddress1);
         provider1.setActive(false, true);
 
-        const provider2: Provider2 = createProvider(providerAddress2, tokenAddress1);
+        const provider2: Provider = createProvider(providerAddress2, tokenAddress1);
         provider2.setActive(false, true);
 
         manager.addToStandardQueue(provider1.providerId);
@@ -1376,7 +1376,7 @@ describe('ProviderManager tests', () => {
     });
 
     it('should correctly set previousReservationStandardStartingIndex and priority queue state when cleanUpQueues is called, previousReservationStandardStartingIndex = 0, 1 provider active and 1 provider not active', () => {
-        const manager: ProviderManager2 = new ProviderManager2(
+        const manager: ProviderManager = new ProviderManager(
             tokenAddress1,
             tokenIdUint8Array1,
             tokenId1,
@@ -1386,10 +1386,10 @@ describe('ProviderManager tests', () => {
         expect(manager.previousReservationStandardStartingIndex).toStrictEqual(0);
         expect(manager.standardQueueLength).toStrictEqual(0);
 
-        const provider1: Provider2 = createProvider(providerAddress1, tokenAddress1);
+        const provider1: Provider = createProvider(providerAddress1, tokenAddress1);
         provider1.setActive(true, true);
 
-        const provider2: Provider2 = createProvider(providerAddress2, tokenAddress1);
+        const provider2: Provider = createProvider(providerAddress2, tokenAddress1);
         provider2.setActive(false, true);
 
         manager.addToStandardQueue(provider1.providerId);
@@ -1406,7 +1406,7 @@ describe('ProviderManager tests', () => {
     });
 
     it('should correctly set previousReservationStandardStartingIndex and priority queue state when cleanUpQueues is called, previousReservationStandardStartingIndex = 0, 2 providers active', () => {
-        const manager: ProviderManager2 = new ProviderManager2(
+        const manager: ProviderManager = new ProviderManager(
             tokenAddress1,
             tokenIdUint8Array1,
             tokenId1,
@@ -1416,10 +1416,10 @@ describe('ProviderManager tests', () => {
         expect(manager.previousReservationStandardStartingIndex).toStrictEqual(0);
         expect(manager.standardQueueLength).toStrictEqual(0);
 
-        const provider1: Provider2 = createProvider(providerAddress1, tokenAddress1);
+        const provider1: Provider = createProvider(providerAddress1, tokenAddress1);
         provider1.setActive(true, true);
 
-        const provider2: Provider2 = createProvider(providerAddress2, tokenAddress1);
+        const provider2: Provider = createProvider(providerAddress2, tokenAddress1);
         provider2.setActive(true, true);
 
         manager.addToStandardQueue(provider1.providerId);
@@ -1436,14 +1436,14 @@ describe('ProviderManager tests', () => {
     });
 
     it('should correctly set previousReservationStandardStartingIndex and priority queue state when cleanUpQueues is called, previousReservationStandardStartingIndex <> 0, 1 provider not active', () => {
-        const manager: ProviderManager2 = new ProviderManager2(
+        const manager: ProviderManager = new ProviderManager(
             tokenAddress1,
             tokenIdUint8Array1,
             tokenId1,
             STRICT_MINIMUM_PROVIDER_RESERVATION_AMOUNT,
         );
 
-        const provider1: Provider2 = createProvider(providerAddress1, tokenAddress1);
+        const provider1: Provider = createProvider(providerAddress1, tokenAddress1);
         provider1.setActive(false, true);
 
         manager.addToStandardQueue(provider1.providerId);
@@ -1454,7 +1454,7 @@ describe('ProviderManager tests', () => {
         expect(manager.previousReservationStandardStartingIndex).toStrictEqual(1);
         expect(manager.standardQueueLength).toStrictEqual(1);
 
-        const provider2: Provider2 = createProvider(providerAddress2, tokenAddress1);
+        const provider2: Provider = createProvider(providerAddress2, tokenAddress1);
         provider2.setActive(false, true);
 
         manager.addToStandardQueue(provider2.providerId);
@@ -1469,14 +1469,14 @@ describe('ProviderManager tests', () => {
     });
 
     it('should correctly set previousReservationStandardStartingIndex and priority queue state when cleanUpQueues is called, previousReservationStandardStartingIndex <> 0, 1 provider active', () => {
-        const manager: ProviderManager2 = new ProviderManager2(
+        const manager: ProviderManager = new ProviderManager(
             tokenAddress1,
             tokenIdUint8Array1,
             tokenId1,
             STRICT_MINIMUM_PROVIDER_RESERVATION_AMOUNT,
         );
 
-        const provider1: Provider2 = createProvider(providerAddress1, tokenAddress1);
+        const provider1: Provider = createProvider(providerAddress1, tokenAddress1);
         provider1.setActive(false, true);
 
         manager.addToStandardQueue(provider1.providerId);
@@ -1487,7 +1487,7 @@ describe('ProviderManager tests', () => {
         expect(manager.previousReservationStandardStartingIndex).toStrictEqual(1);
         expect(manager.standardQueueLength).toStrictEqual(1);
 
-        const provider2: Provider2 = createProvider(providerAddress1, tokenAddress1);
+        const provider2: Provider = createProvider(providerAddress1, tokenAddress1);
         provider2.setActive(true, true);
 
         manager.addToStandardQueue(provider2.providerId);
@@ -1503,14 +1503,14 @@ describe('ProviderManager tests', () => {
     });
 
     it('should correctly set previousReservationStandardStartingIndex and priority queue state when cleanUpQueues is called, previousReservationStandardStartingIndex <> 0, 1 provider not active and 1 provider active', () => {
-        const manager: ProviderManager2 = new ProviderManager2(
+        const manager: ProviderManager = new ProviderManager(
             tokenAddress1,
             tokenIdUint8Array1,
             tokenId1,
             STRICT_MINIMUM_PROVIDER_RESERVATION_AMOUNT,
         );
 
-        const provider1: Provider2 = createProvider(providerAddress1, tokenAddress1);
+        const provider1: Provider = createProvider(providerAddress1, tokenAddress1);
         provider1.setActive(false, true);
 
         manager.addToStandardQueue(provider1.providerId);
@@ -1521,10 +1521,10 @@ describe('ProviderManager tests', () => {
         expect(manager.previousReservationStandardStartingIndex).toStrictEqual(1);
         expect(manager.standardQueueLength).toStrictEqual(1);
 
-        const provider2: Provider2 = createProvider(providerAddress2, tokenAddress1);
+        const provider2: Provider = createProvider(providerAddress2, tokenAddress1);
         provider2.setActive(false, true);
 
-        const provider3: Provider2 = createProvider(providerAddress3, tokenAddress1);
+        const provider3: Provider = createProvider(providerAddress3, tokenAddress1);
         provider3.setActive(true, true);
 
         manager.addToStandardQueue(provider2.providerId);
@@ -1542,13 +1542,13 @@ describe('ProviderManager tests', () => {
     });
 
     it('should correctly set previousReservationStandardStartingIndex and priority queue state when cleanUpQueues is called, previousReservationStandardStartingIndex <> 0, 2 provider not active', () => {
-        const manager: ProviderManager2 = new ProviderManager2(
+        const manager: ProviderManager = new ProviderManager(
             tokenAddress1,
             tokenIdUint8Array1,
             tokenId1,
             STRICT_MINIMUM_PROVIDER_RESERVATION_AMOUNT,
         );
-        const provider1: Provider2 = createProvider(providerAddress1, tokenAddress1);
+        const provider1: Provider = createProvider(providerAddress1, tokenAddress1);
         provider1.setActive(false, true);
 
         manager.addToStandardQueue(provider1.providerId);
@@ -1559,10 +1559,10 @@ describe('ProviderManager tests', () => {
         expect(manager.previousReservationStandardStartingIndex).toStrictEqual(1);
         expect(manager.standardQueueLength).toStrictEqual(1);
 
-        const provider2: Provider2 = createProvider(providerAddress2, tokenAddress1);
+        const provider2: Provider = createProvider(providerAddress2, tokenAddress1);
         provider2.setActive(false, true);
 
-        const provider3: Provider2 = createProvider(providerAddress3, tokenAddress1);
+        const provider3: Provider = createProvider(providerAddress3, tokenAddress1);
         provider3.setActive(false, true);
 
         manager.addToStandardQueue(provider2.providerId);
@@ -1580,13 +1580,13 @@ describe('ProviderManager tests', () => {
     });
 
     it('should correctly set previousReservationStandardStartingIndex and priority queue state when cleanUpQueues is called, previousReservationStandardStartingIndex <> 0, 1 provider active and 1 provider not active', () => {
-        const manager: ProviderManager2 = new ProviderManager2(
+        const manager: ProviderManager = new ProviderManager(
             tokenAddress1,
             tokenIdUint8Array1,
             tokenId1,
             STRICT_MINIMUM_PROVIDER_RESERVATION_AMOUNT,
         );
-        const provider1: Provider2 = createProvider(providerAddress1, tokenAddress1);
+        const provider1: Provider = createProvider(providerAddress1, tokenAddress1);
         provider1.setActive(false, true);
 
         manager.addToStandardQueue(provider1.providerId);
@@ -1597,10 +1597,10 @@ describe('ProviderManager tests', () => {
         expect(manager.previousReservationStandardStartingIndex).toStrictEqual(1);
         expect(manager.standardQueueLength).toStrictEqual(1);
 
-        const provider2: Provider2 = createProvider(providerAddress2, tokenAddress1);
+        const provider2: Provider = createProvider(providerAddress2, tokenAddress1);
         provider2.setActive(true, true);
 
-        const provider3: Provider2 = createProvider(providerAddress3, tokenAddress1);
+        const provider3: Provider = createProvider(providerAddress3, tokenAddress1);
         provider3.setActive(false, true);
 
         manager.addToStandardQueue(provider2.providerId);
@@ -1618,13 +1618,13 @@ describe('ProviderManager tests', () => {
     });
 
     it('should correctly set previousReservationStandardStartingIndex and priority queue state when cleanUpQueues is called, previousReservationStandardStartingIndex <> 0, 2 providers active', () => {
-        const manager: ProviderManager2 = new ProviderManager2(
+        const manager: ProviderManager = new ProviderManager(
             tokenAddress1,
             tokenIdUint8Array1,
             tokenId1,
             STRICT_MINIMUM_PROVIDER_RESERVATION_AMOUNT,
         );
-        const provider1: Provider2 = createProvider(providerAddress1, tokenAddress1);
+        const provider1: Provider = createProvider(providerAddress1, tokenAddress1);
         provider1.setActive(false, true);
 
         manager.addToStandardQueue(provider1.providerId);
@@ -1635,10 +1635,10 @@ describe('ProviderManager tests', () => {
         expect(manager.previousReservationStandardStartingIndex).toStrictEqual(1);
         expect(manager.standardQueueLength).toStrictEqual(1);
 
-        const provider2: Provider2 = createProvider(providerAddress1, tokenAddress1, true);
+        const provider2: Provider = createProvider(providerAddress1, tokenAddress1, true);
         provider2.setActive(true, true);
 
-        const provider3: Provider2 = createProvider(providerAddress2, tokenAddress1, true);
+        const provider3: Provider = createProvider(providerAddress2, tokenAddress1, true);
         provider3.setActive(true, true);
 
         manager.addToStandardQueue(provider2.providerId);
@@ -1656,13 +1656,13 @@ describe('ProviderManager tests', () => {
     });
 
     it('should correctly set previousReservationStandardStartingIndex and priority queue state when cleanUpQueues is called, previousReservationStandardStartingIndex <> 0, 1 provider active state and 1 provider not active', () => {
-        const manager: ProviderManager2 = new ProviderManager2(
+        const manager: ProviderManager = new ProviderManager(
             tokenAddress1,
             tokenIdUint8Array1,
             tokenId1,
             STRICT_MINIMUM_PROVIDER_RESERVATION_AMOUNT,
         );
-        const provider1: Provider2 = createProvider(providerAddress1, tokenAddress1);
+        const provider1: Provider = createProvider(providerAddress1, tokenAddress1);
         provider1.setActive(false, true);
 
         manager.addToStandardQueue(provider1.providerId);
@@ -1673,10 +1673,10 @@ describe('ProviderManager tests', () => {
         expect(manager.previousReservationStandardStartingIndex).toStrictEqual(1);
         expect(manager.standardQueueLength).toStrictEqual(1);
 
-        const provider2: Provider2 = createProvider(providerAddress1, tokenAddress1);
+        const provider2: Provider = createProvider(providerAddress1, tokenAddress1);
         provider2.setActive(true, true);
 
-        const provider3: Provider2 = createProvider(providerAddress2, tokenAddress1);
+        const provider3: Provider = createProvider(providerAddress2, tokenAddress1);
         provider3.setActive(false, true);
 
         manager.addToStandardQueue(provider2.providerId);

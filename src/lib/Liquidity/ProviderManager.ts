@@ -68,6 +68,22 @@ export class ProviderManager {
         this._startingIndex.set(0, value);
     }
 
+    public get removalQueueLength(): u64 {
+        return this._removalQueue.getLength();
+    }
+
+    public get removalQueueStartingIndex(): u64 {
+        return this._removalQueue.startingIndex();
+    }
+
+    public get standardQueueLength(): u64 {
+        return this._queue.getLength();
+    }
+
+    public get standardQueueStartingIndex(): u64 {
+        return this._queue.startingIndex();
+    }
+
     public get previousReservationStartingIndex(): u64 {
         return this._startingIndex.get(1);
     }

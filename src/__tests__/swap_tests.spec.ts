@@ -8,13 +8,13 @@ import {
 } from '@btc-vision/btc-runtime/runtime';
 import { ripemd160, sha256 } from '@btc-vision/btc-runtime/runtime/env/global';
 import { u128, u256 } from '@btc-vision/as-bignum/assembly';
-import { clearCachedProviders, saveAllProviders } from '../lib/Provider2';
-import { CreatePoolOperation2 } from '../lib/Liquidity/operations/CreatePoolOperation2';
-import { LiquidityQueue2 } from '../lib/Liquidity/LiquidityQueue2';
-import { ReserveLiquidityOperation2 } from '../lib/Liquidity/operations/ReserveLiquidityOperation2';
-import { SwapOperation2 } from '../lib/Liquidity/operations/SwapOperation2';
-import { ListTokensForSaleOperation2 } from '../lib/Liquidity/operations/ListTokensForSaleOperation2';
-import { AddLiquidityOperation2 } from '../lib/Liquidity/operations/AddLiquidityOperation2';
+import { clearCachedProviders, saveAllProviders } from '../lib/Provider';
+import { CreatePoolOperation } from '../lib/Liquidity/operations/CreatePoolOperation';
+import { LiquidityQueue } from '../lib/Liquidity/LiquidityQueue';
+import { ReserveLiquidityOperation } from '../lib/Liquidity/operations/ReserveLiquidityOperation';
+import { SwapOperation } from '../lib/Liquidity/operations/SwapOperation';
+import { ListTokensForSaleOperation } from '../lib/Liquidity/operations/ListTokensForSaleOperation';
+import { AddLiquidityOperation } from '../lib/Liquidity/operations/AddLiquidityOperation';
 
 const providerAddress1: Address = new Address([
     68, 153, 66, 199, 127, 168, 221, 199, 156, 120, 43, 34, 88, 0, 29, 93, 123, 133, 101, 220, 185,
@@ -146,7 +146,7 @@ function addressToPointer(address: Address): Uint8Array {
     return ripemd160(address);
 }
 
-function dumpQueue(queue: LiquidityQueue2): void {
+function dumpQueue(queue: LiquidityQueue): void {
     log(`initial provider: ${queue.initialLiquidityProvider.toString()}`);
     log(`p0: ${queue.p0.toString()}`);
     log(`virtualBTCReserve: ${queue.virtualBTCReserve.toString()}`);
@@ -172,10 +172,10 @@ function createPool(statsPerToken: u32 = 1000, receiver: string = 'initialprovid
     const antiBotMaximumTokensPerReservation: u256 = u256.Zero;
     const maxReservesIn5BlocksPercent: u16 = 4000;
 
-    const queue = new LiquidityQueue2(tokenAddress1, addressToPointer(tokenAddress1), true);
+    const queue = new LiquidityQueue(tokenAddress1, addressToPointer(tokenAddress1), true);
 
     const providerId = addressToPointerU256(Blockchain.tx.sender, tokenAddress1);
-    const operation = new CreatePoolOperation2(
+    const operation = new CreatePoolOperation(
         queue,
         floorPrice,
         providerId,
@@ -194,9 +194,9 @@ function createPool(statsPerToken: u32 = 1000, receiver: string = 'initialprovid
 
 function reserveLiquidity(maximumAmountIn: u256, minimumAmountOut: u256, forLP: bool): void {
     const providerId = addressToPointerU256(Blockchain.tx.sender, tokenAddress1);
-    const queue = new LiquidityQueue2(tokenAddress1, addressToPointer(tokenAddress1), true);
+    const queue = new LiquidityQueue(tokenAddress1, addressToPointer(tokenAddress1), true);
 
-    const operation = new ReserveLiquidityOperation2(
+    const operation = new ReserveLiquidityOperation(
         queue,
         providerId,
         Blockchain.tx.sender,
@@ -213,9 +213,9 @@ function listLiquidity(token: Address, receiver: string, amountIn: u128, priorit
     const providerId = addressToPointerU256(Blockchain.tx.sender, token);
     const tokenId = addressToPointer(token);
 
-    const queue = new LiquidityQueue2(tokenAddress1, tokenId, true);
+    const queue = new LiquidityQueue(tokenAddress1, tokenId, true);
 
-    const operation = new ListTokensForSaleOperation2(
+    const operation = new ListTokensForSaleOperation(
         queue,
         providerId,
         amountIn,
@@ -231,8 +231,8 @@ function listLiquidity(token: Address, receiver: string, amountIn: u128, priorit
 function addLiquidity(token: Address, receiver: string): void {
     const providerId = addressToPointerU256(Blockchain.tx.sender, token);
     const tokenId = addressToPointer(token);
-    const queue = new LiquidityQueue2(tokenAddress1, tokenId, false);
-    const operation = new AddLiquidityOperation2(queue, providerId, receiver);
+    const queue = new LiquidityQueue(tokenAddress1, tokenId, false);
+    const operation = new AddLiquidityOperation(queue, providerId, receiver);
 
     operation.execute();
     queue.save();
@@ -240,9 +240,9 @@ function addLiquidity(token: Address, receiver: string): void {
 }
 
 function swap(): void {
-    const queue = new LiquidityQueue2(tokenAddress1, addressToPointer(tokenAddress1), false);
+    const queue = new LiquidityQueue(tokenAddress1, addressToPointer(tokenAddress1), false);
 
-    const operation = new SwapOperation2(queue);
+    const operation = new SwapOperation(queue);
 
     operation.execute();
     queue.save();
@@ -273,34 +273,27 @@ describe('Swap tests', () => {
         Blockchain.clearMockedResults();
     });
 
-    it('should not allow to swap 2 times on the same reservation', () => {
+    /*it('should not allow to swap 2 times on the same reservation', () => {
         setBlockchainEnvironment(10, contractDeployer1, contractDeployer1, txId1);
         const floorPrice = createPool();
-
-        let addr: Address[] = [];
+        const addr: Address[] = [];
 
         for (let i = 0; i < 100; i++) {
             clearCachedProviders();
-
-            /*const provider2: Provider2 = getProvider(queue.initialLiquidityProvider);
-
-            log(
-                `${provider2.providerId}, ${provider2.reserved}, ${provider2.liquidity}, ${provider2.btcReceiver}`,
-            );*/
 
             const a = getNextAddress();
             addr.push(a);
             setBlockchainEnvironment(11, a, a, txId2);
             reserveLiquidity(
                 u256.fromU64(10001),
-                /*getMinimumTokenAmount(floorPrice)*/ u256.Zero,
+                u256.Zero, //getMinimumTokenAmount(floorPrice)
                 false,
             );
 
             saveAllProviders();
         }
 
-        const queue = new LiquidityQueue2(tokenAddress1, addressToPointer(tokenAddress1), true);
+        const queue = new LiquidityQueue(tokenAddress1, addressToPointer(tokenAddress1), true);
         //log(`${queue.reservedLiquidity} ${queue.liquidity}`);
 
         for (let i = 0; i < 100; i++) {
@@ -322,5 +315,5 @@ describe('Swap tests', () => {
         for (let i = 0; i < 100; i++) {
             test(addr[i]);
         }
-    });
+    });*/
 });

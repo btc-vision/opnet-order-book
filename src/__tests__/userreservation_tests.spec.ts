@@ -1,4 +1,4 @@
-import { UserReservation2 } from '../data-types/UserReservation2';
+import { UserReservation } from '../data-types/UserReservation';
 import { RESERVATION_ID_POINTER } from '../lib/StoredPointers';
 import {
     Address,
@@ -82,7 +82,7 @@ describe('UserReservation tests', () => {
     it('should correctly get/set reservedForLiquidityPool', () => {
         const reservation = generateReservationId(tokenAddress1, providerAddress1);
 
-        const userReservation = new UserReservation2(RESERVATION_ID_POINTER, reservation);
+        const userReservation = new UserReservation(RESERVATION_ID_POINTER, reservation);
         userReservation.reservedForLiquidityPool = true;
 
         expect(userReservation.reservedForLiquidityPool).toBeTruthy();
@@ -91,7 +91,7 @@ describe('UserReservation tests', () => {
     it('should correctly get/set purge index', () => {
         const reservation = generateReservationId(tokenAddress1, providerAddress1);
 
-        const userReservation = new UserReservation2(RESERVATION_ID_POINTER, reservation);
+        const userReservation = new UserReservation(RESERVATION_ID_POINTER, reservation);
         userReservation.setPurgeIndex(10);
 
         expect(userReservation.getPurgeIndex()).toStrictEqual(10);
@@ -103,7 +103,7 @@ describe('UserReservation tests', () => {
         const reservation = generateReservationId(tokenAddress1, providerAddress1);
         const expirationBlock: u64 = 10;
 
-        const userReservation = new UserReservation2(RESERVATION_ID_POINTER, reservation);
+        const userReservation = new UserReservation(RESERVATION_ID_POINTER, reservation);
         userReservation.setExpirationBlock(expirationBlock);
 
         expect(userReservation.getExpirationBlock()).toStrictEqual(expirationBlock);
@@ -115,7 +115,7 @@ describe('UserReservation tests', () => {
         const reservation = generateReservationId(tokenAddress1, providerAddress1);
         const expirationBlock: u64 = 5;
 
-        const userReservation = new UserReservation2(RESERVATION_ID_POINTER, reservation);
+        const userReservation = new UserReservation(RESERVATION_ID_POINTER, reservation);
         userReservation.setExpirationBlock(expirationBlock);
 
         expect(userReservation.getExpirationBlock()).toStrictEqual(0);
@@ -127,7 +127,7 @@ describe('UserReservation tests', () => {
         const reservation = generateReservationId(tokenAddress1, providerAddress1);
         const expirationBlock: u64 = 10;
 
-        const userReservation = new UserReservation2(RESERVATION_ID_POINTER, reservation);
+        const userReservation = new UserReservation(RESERVATION_ID_POINTER, reservation);
         userReservation.setExpirationBlock(expirationBlock);
 
         expect(userReservation.getUserTimeoutBlockExpiration()).toStrictEqual(15);
@@ -139,7 +139,7 @@ describe('UserReservation tests', () => {
         const reservation = generateReservationId(tokenAddress1, providerAddress1);
         const expirationBlock: u64 = 5;
 
-        const userReservation = new UserReservation2(RESERVATION_ID_POINTER, reservation);
+        const userReservation = new UserReservation(RESERVATION_ID_POINTER, reservation);
         userReservation.setExpirationBlock(expirationBlock);
 
         expect(userReservation.getUserTimeoutBlockExpiration()).toStrictEqual(10);
@@ -151,7 +151,7 @@ describe('UserReservation tests', () => {
         const expirationBlock: u64 = 10;
         const purgeIndex: u32 = 11;
 
-        const userReservation = new UserReservation2(RESERVATION_ID_POINTER, reservation.toU256());
+        const userReservation = new UserReservation(RESERVATION_ID_POINTER, reservation.toU256());
         userReservation.reservedForLiquidityPool = true;
         userReservation.setExpirationBlock(expirationBlock);
         userReservation.setPurgeIndex(purgeIndex);
@@ -170,7 +170,7 @@ describe('UserReservation tests', () => {
         const expirationBlock: u64 = 10;
         const purgeIndex: u32 = 11;
 
-        const userReservation = new UserReservation2(RESERVATION_ID_POINTER, reservation.toU256());
+        const userReservation = new UserReservation(RESERVATION_ID_POINTER, reservation.toU256());
         userReservation.reservedForLiquidityPool = true;
         userReservation.setExpirationBlock(expirationBlock);
         userReservation.setPurgeIndex(purgeIndex);
@@ -188,15 +188,14 @@ describe('UserReservation tests', () => {
         const expirationBlock: u64 = 10;
         const purgeIndex: u32 = 11;
 
-        const userReservation = new UserReservation2(RESERVATION_ID_POINTER, reservation.toU256());
+        const userReservation = new UserReservation(RESERVATION_ID_POINTER, reservation.toU256());
         userReservation.reservedForLiquidityPool = true;
         userReservation.setExpirationBlock(expirationBlock);
         userReservation.setPurgeIndex(purgeIndex);
 
         userReservation.save();
 
-        const userReservation2 = new UserReservation2(RESERVATION_ID_POINTER, reservation.toU256());
-
+        const userReservation2 = new UserReservation(RESERVATION_ID_POINTER, reservation.toU256());
         expect(userReservation2.getPurgeIndex()).toStrictEqual(purgeIndex);
         expect(userReservation2.getExpirationBlock()).toStrictEqual(expirationBlock);
         expect(userReservation2.reservedForLiquidityPool).toBeTruthy();

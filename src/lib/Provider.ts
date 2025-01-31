@@ -134,6 +134,14 @@ export function saveAllProviders(): void {
     }
 }
 
+export function clearCachedProviders(): void {
+    cache.length = 0;
+}
+
+export function getProviderCacheLength(): number {
+    return cache.length;
+}
+
 /**
  * @function getProvider
  * @description Retrieves a Provider using the u256 key. Creates and caches a new Provider if not found.
