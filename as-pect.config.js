@@ -20,12 +20,19 @@ export default {
     /** Enable code coverage. */
     coverage: [
         'src/contracts/**/*.ts',
+        'src/contracts/*.ts',
         'src/data-types/**/*.ts',
+        'src/data-types/*.ts',
         'src/utils/**/*.ts',
+        'src/utils/*.ts',
         'src/events/**/*.ts',
+        'src/events/*.ts',
         'src/lib/**/*.ts',
+        'src/lib/*.ts',
         'src/math/**/*.ts',
+        'src/math/*.ts',
         'src/stored/**/*.ts',
+        'src/stored/*.ts',
         'src/index.ts',
     ],
     /**
