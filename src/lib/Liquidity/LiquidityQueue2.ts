@@ -5,6 +5,7 @@ import {
     Potential,
     Revert,
     SafeMath,
+    StoredBooleanArray,
     StoredU128Array,
     StoredU256,
     StoredU256Array,
@@ -14,6 +15,7 @@ import {
 import { u128, u256 } from '@btc-vision/as-bignum/assembly';
 
 import {
+    ACTIVE_RESERVATION_IDS_BY_BLOCK_POINTER,
     ANTI_BOT_MAX_TOKENS_PER_RESERVATION,
     DELTA_BTC_BUY,
     DELTA_TOKENS_ADD,
@@ -38,6 +40,7 @@ import { FeeManager } from '../FeeManager';
 import { CompletedTrade } from '../CompletedTrade';
 import { DynamicFee } from '../DynamicFee';
 import { ProviderManager2 } from './ProviderManager2';
+import { Reservation } from '../Reservation';
 
 const ENABLE_TIMEOUT: bool = false;
 const ENABLE_FEES: bool = true;
@@ -511,7 +514,7 @@ export class LiquidityQueue2 {
 
         // **Important**: we delete the reservation record now
         // (since we have all needed info in local variables)
-        reservation.delete();
+        reservation.delete(false);
 
         if (reservation.valid() === true) {
             throw new Revert('Impossible state: Reservation is still valid');
@@ -716,7 +719,7 @@ export class LiquidityQueue2 {
         const reservation = new Reservation2(this.token, Blockchain.tx.sender);
         if (!reservation.valid()) {
             //throw new Revert('No active reservation for this address.');
-            log('No active reservation for this address.');
+            //log('No active reservation for this address.');
             return null;
         }
 
@@ -841,6 +844,15 @@ export class LiquidityQueue2 {
         return new StoredU128Array(RESERVATION_IDS_BY_BLOCK_POINTER, keyBytes, u256.Zero);
     }
 
+    public getActiveReservationListForBlock(blockNumber: u64): StoredBooleanArray {
+        const writer = new BytesWriter(8 + this.tokenIdUint8Array.length);
+        writer.writeU64(blockNumber);
+        writer.writeBytes(this.tokenIdUint8Array);
+
+        const keyBytes = writer.getBuffer();
+        return new StoredBooleanArray(ACTIVE_RESERVATION_IDS_BY_BLOCK_POINTER, keyBytes, u256.Zero);
+    }
+
     public setBlockQuote(): void {
         if (<u64>u32.MAX_VALUE - 1 < Blockchain.block.numberU64) {
             throw new Revert('Block number too large, max array size.');
@@ -938,23 +950,34 @@ export class LiquidityQueue2 {
 
         for (let blockNumber = lastPurgedBlock; blockNumber < maxBlockToPurge; blockNumber++) {
             const reservationList = this.getReservationListForBlock(blockNumber);
-            const reservationIds = reservationList.getAll(0, reservationList.getLength() as u32);
+            const length: u32 = reservationList.getLength() as u32;
+            const activeIds: StoredBooleanArray =
+                this.getActiveReservationListForBlock(blockNumber);
 
-            for (let i = 0; i < reservationIds.length; i++) {
-                const reservationId = reservationIds[i];
-                const reservation = Reservation2.load(reservationId);
-
-                if (!reservation.isActive()) {
+            for (let i: u32 = 0; i < length; i++) {
+                const isActive = activeIds.get(i);
+                if (!isActive) {
                     continue;
                 }
 
-                reservation.userTimeoutBlockExpiration = Blockchain.block.numberU64 + 5;
+                const reservationId = reservationList.get(i);
+                const reservation = Reservation.load(reservationId);
+
+                if (reservation.getPurgeIndex() !== i) {
+                    throw new Revert(
+                        `Impossible: reservation purge index mismatch (expected: ${i}, actual: ${reservation.getPurgeIndex()})`,
+                    );
+                }
+
+                if (!reservation.expired()) {
+                    throw new Revert(`Impossible: reservation is not active, was in active list`);
+                }
+
+                reservation.timeout();
 
                 const reservedIndexes: u32[] = reservation.getReservedIndexes();
                 const reservedValues: u128[] = reservation.getReservedValues();
                 const queueTypes: u8[] = reservation.getQueueTypes();
-
-                //Blockchain.log(`Purging reservation: ${reservationId}`);
 
                 for (let j = 0; j < reservedIndexes.length; j++) {
                     const providerIndex: u64 = reservedIndexes[j];
@@ -997,7 +1020,7 @@ export class LiquidityQueue2 {
                             provider.reserved,
                         );
 
-                        if (u128.lt(availableLiquidity, u256.fromU32(1000).toU128())) {
+                        if (u128.lt(availableLiquidity, u256.fromU32(600).toU128())) {
                             this._providerManager.resetProvider(provider, false);
                         }
                     }
@@ -1012,7 +1035,7 @@ export class LiquidityQueue2 {
                         u256.Zero,
                     ),
                 );
-                reservation.delete();
+                reservation.delete(true);
             }
 
             reservationList.deleteAll();

@@ -301,7 +301,7 @@ describe('Swap tests', () => {
         }
 
         const queue = new LiquidityQueue2(tokenAddress1, addressToPointer(tokenAddress1), true);
-        log(`${queue.reservedLiquidity} ${queue.liquidity}`);
+        //log(`${queue.reservedLiquidity} ${queue.liquidity}`);
 
         for (let i = 0; i < 100; i++) {
             clearCachedProviders();

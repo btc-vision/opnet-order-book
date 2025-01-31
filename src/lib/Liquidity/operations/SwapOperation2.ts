@@ -20,10 +20,14 @@ export class SwapOperation2 extends BaseOperation2 {
 
         this.ensureReservation(reservation);
 
-        const trade = this.liquidityQueue.executeTrade(reservation);
+        const reservationActiveList = this.liquidityQueue.getActiveReservationListForBlock(
+            reservation.createdAt,
+        );
 
-        /*Blockchain.log(`totalTokensPurchased: ${trade.totalTokensPurchased}`);
-        Blockchain.log(`totalTokensRefunded: ${trade.totalTokensRefunded}`);*/
+        reservationActiveList.set(<u64>reservation.getPurgeIndex(), false);
+        reservationActiveList.save();
+
+        const trade = this.liquidityQueue.executeTrade(reservation);
 
         let totalTokensPurchased = SafeMath.add(
             trade.totalTokensPurchased,
@@ -38,11 +42,9 @@ export class SwapOperation2 extends BaseOperation2 {
                 totalTokensPurchased,
                 totalSatoshisSpent,
             );
+
             totalTokensPurchased = SafeMath.sub(totalTokensPurchased, totalFeeTokens);
             this.liquidityQueue.distributeFee(totalFeeTokens);
-
-            /*Blockchain.log(`totalTokensPurchased after fees: ${totalTokensPurchased}`);
-            Blockchain.log(`totalFeeTokens: ${totalFeeTokens}`);*/
         }
 
         this.liquidityQueue.updateTotalReserved(totalTokensPurchasedBeforeFees, false);

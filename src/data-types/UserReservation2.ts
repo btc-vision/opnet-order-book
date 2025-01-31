@@ -6,10 +6,9 @@ import {
     encodePointer,
     MemorySlotPointer,
 } from '@btc-vision/btc-runtime/runtime';
-import { LiquidityQueue } from '../lib/Liquidity/LiquidityQueue';
 
 @final
-export class UserReservation {
+export class UserReservation2 {
     private readonly u256Pointer: u256;
 
     private expirationBlock: u64 = 0;
@@ -50,6 +49,23 @@ export class UserReservation {
             this.reservedLP = value;
             this.isChanged = true;
         }
+    }
+
+    public static getPackDefaultValue(): u256 {
+        const bytes = new Uint8Array(32);
+        for (let i: i32 = 0; i < 17; i++) {
+            bytes[i] = 0x00;
+        }
+
+        for (let i: i32 = 17; i < 21; i++) {
+            bytes[i] = 0xff;
+        }
+
+        for (let i: i32 = 21; i < 32; i++) {
+            bytes[i] = 0x00;
+        }
+
+        return u256.fromBytes(bytes, true);
     }
 
     /**
@@ -103,7 +119,7 @@ export class UserReservation {
     @inline
     public getUserTimeoutBlockExpiration(): u64 {
         this.ensureValues();
-        return this.expirationBlock + LiquidityQueue.TIMEOUT_AFTER_EXPIRATION;
+        return this.expirationBlock + 5;
     }
 
     /**
@@ -206,7 +222,11 @@ export class UserReservation {
      */
     private ensureValues(): void {
         if (!this.isLoaded) {
-            const storedU256: u256 = Blockchain.getStorageAt(this.u256Pointer, u256.Zero);
+            const storedU256: u256 = Blockchain.getStorageAt(
+                this.u256Pointer,
+                UserReservation2.getPackDefaultValue(),
+            );
+
             const reader = new BytesReader(storedU256.toUint8Array(true));
 
             // Unpack flags (1 byte)
