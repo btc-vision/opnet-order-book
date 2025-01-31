@@ -32,7 +32,6 @@ import {
     RESERVATION_IDS_BY_BLOCK_POINTER,
     RESERVATION_SETTINGS_POINTER,
     STAKING_CA_POINTER,
-    STAKING_FEE_BPS_POINTER,
     TOTAL_RESERVES_POINTER,
 } from '../StoredPointers';
 
@@ -88,7 +87,6 @@ export class LiquidityQueue {
 
     // Staking contract details
     private readonly stakingContractAddress: StoredAddress;
-    private readonly stakingFeeBps: StoredU256;
 
     private consumedOutputsFromUTXOs: Map<string, u64> = new Map<string, u64>();
 
@@ -149,7 +147,6 @@ export class LiquidityQueue {
 
         // Staking
         this.stakingContractAddress = new StoredAddress(STAKING_CA_POINTER, Address.dead());
-        this.stakingFeeBps = new StoredU256(STAKING_FEE_BPS_POINTER, u256.Zero, u256.Zero);
 
         if (purgeOldReservations) {
             this.purgeReservationsAndRestoreProviders();
@@ -895,17 +892,17 @@ export class LiquidityQueue {
     }
 
     public distributeFee(totalFee: u256): void {
-        // TODO: Do we need to updateTotalReserve? What about virtualReserve?
-        // if sending token to someone else, we need to call updateTotalReserve
-        // this.virtualTokenReserve = SafeMath.add(this.virtualTokenReserve, totalFee);
-        // TODO: What is this split? Is it outdated?
-        // If you want an 80/20 split:
-        // const feeLP = SafeMath.div(SafeMath.mul(totalFee, u256.fromU64(80)), u256.fromU64(100));
-        // const feeMoto = SafeMath.sub(totalFee, feeLP);
-        // this.virtualTokenReserve = SafeMath.add(this.virtualTokenReserve, feeLP);
-        // TransferHelper.safeTransfer(this.token, MOTOSWAP, feeMoto);
+        const feeLP = SafeMath.div(SafeMath.mul(totalFee, u256.fromU64(50)), u256.fromU64(100));
+        const feeMoto = SafeMath.sub(totalFee, feeLP);
+        // Do nothing with half the fee
+        this.virtualTokenReserve = SafeMath.add(this.virtualTokenReserve, feeLP);
 
-        TransferHelper.safeTransfer(this.token, this.stakingContractAddress.value, totalFee);
+        // Only transfer if the fee is non-zero
+        if (feeMoto > u256.Zero) {
+            // Send other half of fee to staking contract
+            TransferHelper.safeTransfer(this.token, this.stakingContractAddress.value, feeMoto);
+            this.updateTotalReserve(feeMoto, false);
+        }
     }
 
     private computeVolatility(

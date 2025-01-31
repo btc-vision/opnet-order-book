@@ -29,7 +29,7 @@ import { ReserveLiquidityOperation } from '../lib/Liquidity/operations/ReserveLi
 import { CancelListingOperation } from '../lib/Liquidity/operations/CancelListingOperation';
 import { SwapOperation } from '../lib/Liquidity/operations/SwapOperation';
 import { SELECTOR_BYTE_LENGTH } from '@btc-vision/btc-runtime/runtime/utils/lengths';
-import { STAKING_CA_POINTER, STAKING_FEE_BPS_POINTER } from '../lib/StoredPointers';
+import { STAKING_CA_POINTER } from '../lib/StoredPointers';
 
 /**
  * OrderBook contract for the OP_NET order book system,
@@ -39,14 +39,12 @@ import { STAKING_CA_POINTER, STAKING_FEE_BPS_POINTER } from '../lib/StoredPointe
 @final
 export class NativeSwap extends OP_NET {
     private readonly minimumTradeSize: u256 = u256.fromU32(10_000); // The minimum trade size in satoshis.
-    public stakingContractFeeBps: StoredU256;
     public stakingContractAddress: StoredAddress;
 
     public constructor() {
         super();
 
         this.stakingContractAddress = new StoredAddress(STAKING_CA_POINTER, Address.dead());
-        this.stakingContractFeeBps = new StoredU256(STAKING_FEE_BPS_POINTER, u256.Zero, u256.Zero);
     }
 
     private static get DEPLOYER_SELECTOR(): Selector {
@@ -59,8 +57,6 @@ export class NativeSwap extends OP_NET {
 
     public override onDeployment(_calldata: Calldata): void {
         FeeManager.onDeploy();
-        // Default staking fee: 0.2%
-        this.stakingContractFeeBps.set(u256.from(20));
     }
 
     public override onExecutionCompleted(): void {
@@ -98,8 +94,6 @@ export class NativeSwap extends OP_NET {
                 return this.setFees(calldata);
             case encodeSelector('setStakingContractAddress(address)'):
                 return this.setStakingContractAddress(calldata);
-            case encodeSelector('setStakingFeeBips(uint256)'):
-                return this.setStakingFeeBips(calldata);
 
             /** Readable methods */
             case encodeSelector('getReserve(address)'):
@@ -116,8 +110,6 @@ export class NativeSwap extends OP_NET {
                 return this.getAntibotSettings(calldata);
             case encodeSelector('getStakingContractAddress'):
                 return this.getStakingContractAddress(calldata);
-            case encodeSelector('getStakingFeeBips'):
-                return this.getStakingFeeBips(calldata);
             default:
                 return super.execute(method, calldata);
         }
@@ -167,22 +159,6 @@ export class NativeSwap extends OP_NET {
         this.onlyDeployer(Blockchain.tx.sender);
 
         this.stakingContractAddress.value = calldata.readAddress();
-
-        const result = new BytesWriter(1);
-        result.writeBoolean(true);
-        return result;
-    }
-
-    private getStakingFeeBips(_calldata: Calldata): BytesWriter {
-        const response = new BytesWriter(U256_BYTE_LENGTH);
-        response.writeU256(this.stakingContractFeeBps.value);
-
-        return response;
-    }
-
-    private setStakingFeeBips(calldata: Calldata): BytesWriter {
-        this.onlyDeployer(Blockchain.tx.sender);
-        this.stakingContractFeeBps.set(calldata.readU256());
 
         const result = new BytesWriter(1);
         result.writeBoolean(true);
