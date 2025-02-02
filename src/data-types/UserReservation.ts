@@ -120,7 +120,12 @@ export class UserReservation {
     @inline
     public getUserTimeoutBlockExpiration(): u64 {
         this.ensureValues();
-        return this.expirationBlock + LiquidityQueue.TIMEOUT_AFTER_EXPIRATION;
+
+        if (this.isTimeout) {
+            return this.expirationBlock + LiquidityQueue.TIMEOUT_AFTER_EXPIRATION;
+        } else {
+            return 0;
+        }
     }
 
     /**
@@ -176,17 +181,6 @@ export class UserReservation {
         }
 
         this.isChanged = true;
-    }
-
-    /**
-     * @method toString
-     * @description Returns a string representation of the UserReservation.
-     * @returns {string} - A string detailing all fields.
-     */
-    @inline
-    public toString(): string {
-        this.ensureValues();
-        return `ExpirationBlock: ${this.expirationBlock}`;
     }
 
     /**

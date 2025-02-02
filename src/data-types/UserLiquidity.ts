@@ -166,9 +166,9 @@ export class UserLiquidity {
     }
 
     /**
-     * @method setLiquidityAmount
-     * @description Sets the liquidity amount.
-     * @param {u128} amount - The liquidity amount to set.
+     * @method setReservedAmount
+     * @description Sets the reserved amount.
+     * @param {u128} amount - The reserved amount to set.
      */
     @inline
     public setReservedAmount(amount: u128): void {
@@ -241,17 +241,6 @@ export class UserLiquidity {
             this.liquidityProvided = liquidityProvided;
             this.liquidityChanged = true;
         }
-    }
-
-    /**
-     * @method toString
-     * @description Returns a string representation of the UserLiquidity.
-     * @returns {string} - A string detailing all fields.
-     */
-    @inline
-    public toString(): string {
-        this.ensureValues();
-        return `ActiveFlag: ${this.activeFlag}, LiquidityAmount: ${this.liquidityAmount.toString()}, ReservedAmount: ${this.reservedAmount.toString()}`;
     }
 
     /**

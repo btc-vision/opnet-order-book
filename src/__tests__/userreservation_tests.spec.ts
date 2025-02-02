@@ -4,6 +4,7 @@ import {
     Address,
     ADDRESS_BYTE_LENGTH,
     Blockchain,
+    BytesReader,
     BytesWriter,
 } from '@btc-vision/btc-runtime/runtime';
 import { ripemd160 } from '@btc-vision/btc-runtime/runtime/env/global';
@@ -199,5 +200,50 @@ describe('UserReservation tests', () => {
         expect(userReservation2.getPurgeIndex()).toStrictEqual(purgeIndex);
         expect(userReservation2.getExpirationBlock()).toStrictEqual(expirationBlock);
         expect(userReservation2.reservedForLiquidityPool).toBeTruthy();
+    });
+
+    it('should correctly convert flags to byte[] when all true', () => {
+        const reservation = generateReservationId(tokenAddress1, providerAddress1);
+        const expirationBlock: u64 = 10;
+        const purgeIndex: u32 = 11;
+
+        const userReservation = new UserReservation(RESERVATION_ID_POINTER, reservation.toU256());
+        userReservation.reservedForLiquidityPool = true;
+        userReservation.setExpirationBlock(expirationBlock);
+        userReservation.setPurgeIndex(purgeIndex);
+        userReservation.timeout();
+
+        const bytes: u8[] = userReservation.toBytes();
+        const packed: u256 = u256.fromBytes(bytes);
+        const reader = new BytesReader(packed.toUint8Array(true));
+        const flags: u8 = reader.readU8();
+
+        const reservedLP: bool = !!(flags & 0b1);
+        const isTimeout: bool = !!(flags & 0b10);
+
+        expect(reservedLP).toBeTruthy();
+        expect(isTimeout).toBeTruthy();
+    });
+
+    it('should correctly convert flags to byte[] when all false', () => {
+        const reservation = generateReservationId(tokenAddress1, providerAddress1);
+        const expirationBlock: u64 = 10;
+        const purgeIndex: u32 = 11;
+
+        const userReservation = new UserReservation(RESERVATION_ID_POINTER, reservation.toU256());
+        userReservation.reservedForLiquidityPool = false;
+        userReservation.setExpirationBlock(expirationBlock);
+        userReservation.setPurgeIndex(purgeIndex);
+
+        const bytes: u8[] = userReservation.toBytes();
+        const packed: u256 = u256.fromBytes(bytes);
+        const reader = new BytesReader(packed.toUint8Array(true));
+        const flags: u8 = reader.readU8();
+
+        const reservedLP: bool = !!(flags & 0b1);
+        const isTimeout: bool = !!(flags & 0b10);
+
+        expect(reservedLP).toBeFalsy();
+        expect(isTimeout).toBeFalsy();
     });
 });

@@ -273,47 +273,51 @@ describe('Swap tests', () => {
         Blockchain.clearMockedResults();
     });
 
-    /*it('should not allow to swap 2 times on the same reservation', () => {
-        setBlockchainEnvironment(10, contractDeployer1, contractDeployer1, txId1);
-        const floorPrice = createPool();
-        const addr: Address[] = [];
+    /* it('should not allow to swap 2 times on the same reservation', () => {
+         setBlockchainEnvironment(10, contractDeployer1, contractDeployer1, txId1);
+         const floorPrice = createPool();
+         const addr: Address[] = [];
 
-        for (let i = 0; i < 100; i++) {
-            clearCachedProviders();
+         for (let i = 0; i < 100; i++) {
+             clearCachedProviders();
 
-            const a = getNextAddress();
-            addr.push(a);
-            setBlockchainEnvironment(11, a, a, txId2);
-            reserveLiquidity(
-                u256.fromU64(10001),
-                u256.Zero, //getMinimumTokenAmount(floorPrice)
-                false,
-            );
+             const a = getNextAddress();
+             addr.push(a);
+             setBlockchainEnvironment(11, a, a, txId2);
+             reserveLiquidity(
+                 u256.fromU64(10001),
+                 u256.Zero, //getMinimumTokenAmount(floorPrice)
+                 false,
+             );
 
-            saveAllProviders();
-        }
+             saveAllProviders();
+         }
 
-        const queue = new LiquidityQueue(tokenAddress1, addressToPointer(tokenAddress1), true);
-        //log(`${queue.reservedLiquidity} ${queue.liquidity}`);
+         const queue = new LiquidityQueue(tokenAddress1, addressToPointer(tokenAddress1), true);
+         //log(`${queue.reservedLiquidity} ${queue.liquidity}`);
 
-        for (let i = 0; i < 100; i++) {
-            clearCachedProviders();
-            const a = addr[i];
+         for (let i = 0; i < 100; i++) {
+             clearCachedProviders();
+             const a = addr[i];
 
-            setBlockchainEnvironment(12, a, a, txId2);
-            const outputs: TransactionOutput[] = [
-                new TransactionOutput(0, '', 0),
-                new TransactionOutput(1, 'initialprovideraddress', 10001),
-            ];
+             setBlockchainEnvironment(12, a, a, txId2);
+             const outputs: TransactionOutput[] = [
+                 new TransactionOutput(0, '', 0),
+                 new TransactionOutput(1, 'initialprovideraddress', 10001),
+             ];
 
-            Blockchain.mockTransactionOutput(outputs);
+             Blockchain.mockTransactionOutput(outputs);
 
-            swap();
-            saveAllProviders();
-        }
+             swap();
+             saveAllProviders();
+         }
 
-        for (let i = 0; i < 100; i++) {
-            test(addr[i]);
-        }
-    });*/
+         for (let i = 0; i < 100; i++) {
+             expect(() => {
+                 test(addr[i]);
+             }).toThrow();
+         }
+     });
+
+     */
 });

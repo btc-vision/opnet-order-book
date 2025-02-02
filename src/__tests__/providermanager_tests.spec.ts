@@ -447,6 +447,25 @@ describe('ProviderManager tests', () => {
         expect(manager.previousRemovalStartingIndex).toStrictEqual(0);
     });
 
+    it('should restore the 3 current indexes to the previous value when restoreCurrentIndex is called', () => {
+        const manager: ProviderManager = new ProviderManager(
+            tokenAddress1,
+            tokenIdUint8Array1,
+            tokenId1,
+            STRICT_MINIMUM_PROVIDER_RESERVATION_AMOUNT,
+        );
+
+        manager.previousReservationStartingIndex = 10;
+        manager.previousReservationStandardStartingIndex = 11;
+        manager.previousRemovalStartingIndex = 12;
+
+        manager.restoreCurrentIndex();
+
+        expect(manager.previousReservationStartingIndex).toStrictEqual(10);
+        expect(manager.previousReservationStandardStartingIndex).toStrictEqual(11);
+        expect(manager.previousRemovalStartingIndex).toStrictEqual(12);
+    });
+
     //new items in removal queue and previousRemovalStartingIndex = 0
     // - 1 provider
     // - 1 provider in pendingRemoval state
@@ -1691,5 +1710,215 @@ describe('ProviderManager tests', () => {
         expect(manager.getFromStandardQueue(1)).toStrictEqual(provider2.providerId);
         expect(manager.getFromStandardQueue(2)).toStrictEqual(provider3.providerId);
         expect(manager.standardQueueStartingIndex).toStrictEqual(1);
+    });
+
+    it('should correctly persists the value when save is called', () => {
+        const manager: ProviderManager = new ProviderManager(
+            tokenAddress1,
+            tokenIdUint8Array1,
+            tokenId1,
+            STRICT_MINIMUM_PROVIDER_RESERVATION_AMOUNT,
+        );
+
+        manager.initialLiquidityProvider = u256.fromU32(1);
+        manager.setBTCowedReserved(u256.fromU32(10), u256.fromU32(999999));
+        manager.setBTCowedReserved(u256.fromU32(11), u256.fromU32(888888));
+        manager.setBTCowed(u256.fromU32(20), u256.fromU32(777777));
+        manager.setBTCowed(u256.fromU32(21), u256.fromU32(666666));
+
+        manager.addToStandardQueue(u256.fromU32(1000));
+        manager.addToStandardQueue(u256.fromU32(1001));
+        manager.addToStandardQueue(u256.fromU32(1002));
+
+        manager.addToPriorityQueue(u256.fromU32(2000));
+        manager.addToPriorityQueue(u256.fromU32(2001));
+        manager.addToPriorityQueue(u256.fromU32(2002));
+
+        manager.addToRemovalQueue(u256.fromU32(3000));
+        manager.addToRemovalQueue(u256.fromU32(3001));
+        manager.addToRemovalQueue(u256.fromU32(3002));
+
+        manager.save();
+
+        const manager2: ProviderManager = new ProviderManager(
+            tokenAddress1,
+            tokenIdUint8Array1,
+            tokenId1,
+            STRICT_MINIMUM_PROVIDER_RESERVATION_AMOUNT,
+        );
+
+        expect(manager.initialLiquidityProvider).toStrictEqual(u256.fromU32(1));
+        expect(manager2.getBTCowedReserved(u256.fromU32(10))).toStrictEqual(u256.fromU32(999999));
+        expect(manager2.getBTCowedReserved(u256.fromU32(11))).toStrictEqual(u256.fromU32(888888));
+        expect(manager2.getBTCowed(u256.fromU32(20))).toStrictEqual(u256.fromU32(777777));
+        expect(manager2.getBTCowed(u256.fromU32(21))).toStrictEqual(u256.fromU32(666666));
+
+        expect(manager2.previousReservationStartingIndex).toStrictEqual(0);
+        expect(manager2.previousReservationStandardStartingIndex).toStrictEqual(0);
+        expect(manager2.previousRemovalStartingIndex).toStrictEqual(0);
+
+        expect(manager2.standardQueueLength).toStrictEqual(3);
+        expect(manager2.priorityQueueLength).toStrictEqual(3);
+        expect(manager2.removalQueueLength).toStrictEqual(3);
+
+        expect(manager2.priorityQueueStartingIndex).toStrictEqual(0);
+        expect(manager2.removalQueueStartingIndex).toStrictEqual(0);
+        expect(manager2.standardQueueStartingIndex).toStrictEqual(0);
+
+        expect(manager2.getFromStandardQueue(0)).toStrictEqual(u256.fromU32(1000));
+        expect(manager2.getFromStandardQueue(1)).toStrictEqual(u256.fromU32(1001));
+        expect(manager2.getFromStandardQueue(2)).toStrictEqual(u256.fromU32(1002));
+
+        expect(manager2.getFromPriorityQueue(0)).toStrictEqual(u256.fromU32(2000));
+        expect(manager2.getFromPriorityQueue(1)).toStrictEqual(u256.fromU32(2001));
+        expect(manager2.getFromPriorityQueue(2)).toStrictEqual(u256.fromU32(2002));
+
+        expect(manager2.getFromRemovalQueue(0)).toStrictEqual(u256.fromU32(3000));
+        expect(manager2.getFromRemovalQueue(1)).toStrictEqual(u256.fromU32(3001));
+        expect(manager2.getFromRemovalQueue(2)).toStrictEqual(u256.fromU32(3002));
+    });
+
+    it('should return null when calling getNextProviderWithLiquidity and no provider are found', () => {
+        const manager: ProviderManager = new ProviderManager(
+            tokenAddress1,
+            tokenIdUint8Array1,
+            tokenId1,
+            STRICT_MINIMUM_PROVIDER_RESERVATION_AMOUNT,
+        );
+
+        const provider = manager.getNextProviderWithLiquidity();
+
+        expect(provider).toBeNull();
+    });
+});
+
+describe('ProviderManager getNextProviderWithLiquidity with only providers in removal queue tests', () => {
+    beforeEach(() => {
+        clearCachedProviders();
+        Blockchain.clearStorage();
+        Blockchain.clearMockedResults();
+    });
+
+    it('should set currentIndexRemoval to removalQueue startingIndex when currentIndexRemoval = 0 and provider valid for the test ', () => {
+        const manager: ProviderManager = new ProviderManager(
+            tokenAddress1,
+            tokenIdUint8Array1,
+            tokenId1,
+            STRICT_MINIMUM_PROVIDER_RESERVATION_AMOUNT,
+        );
+    });
+
+    it('should use currentIndexRemoval when currentIndexRemoval <> 0 and provider valid for the test', () => {
+        const manager: ProviderManager = new ProviderManager(
+            tokenAddress1,
+            tokenIdUint8Array1,
+            tokenId1,
+            STRICT_MINIMUM_PROVIDER_RESERVATION_AMOUNT,
+        );
+    });
+
+    it('should skip deleted providers when there are some in the removal queue before the valid provider for the test', () => {
+        const manager: ProviderManager = new ProviderManager(
+            tokenAddress1,
+            tokenIdUint8Array1,
+            tokenId1,
+            STRICT_MINIMUM_PROVIDER_RESERVATION_AMOUNT,
+        );
+    });
+
+    it('should remove provider from the removal queue when the provider is not in pendingRemoval and is a LP', () => {
+        const manager: ProviderManager = new ProviderManager(
+            tokenAddress1,
+            tokenIdUint8Array1,
+            tokenId1,
+            STRICT_MINIMUM_PROVIDER_RESERVATION_AMOUNT,
+        );
+    });
+
+    it('should remove provider from the removal queue when the provider is not in pendingRemoval and is not a LP', () => {
+        const manager: ProviderManager = new ProviderManager(
+            tokenAddress1,
+            tokenIdUint8Array1,
+            tokenId1,
+            STRICT_MINIMUM_PROVIDER_RESERVATION_AMOUNT,
+        );
+    });
+
+    it('should remove provider from the removal queue when the provider is in pendingRemoval and is not a LP', () => {
+        const manager: ProviderManager = new ProviderManager(
+            tokenAddress1,
+            tokenIdUint8Array1,
+            tokenId1,
+            STRICT_MINIMUM_PROVIDER_RESERVATION_AMOUNT,
+        );
+    });
+
+    it('should return the provider when the provider states are valid and (owedBTC - reservedBTC) > strictMinimumProviderReservationAmount', () => {
+        const manager: ProviderManager = new ProviderManager(
+            tokenAddress1,
+            tokenIdUint8Array1,
+            tokenId1,
+            STRICT_MINIMUM_PROVIDER_RESERVATION_AMOUNT,
+        );
+    });
+
+    it('should be ??? when the provider states are valid but owedBTC = reservedBTC', () => {
+        const manager: ProviderManager = new ProviderManager(
+            tokenAddress1,
+            tokenIdUint8Array1,
+            tokenId1,
+            STRICT_MINIMUM_PROVIDER_RESERVATION_AMOUNT,
+        );
+    });
+
+    it('should be removed from the removal queue when the provider states are valid but (owedBTC - reservedBTC) < strictMinimumProviderReservationAmount', () => {
+        const manager: ProviderManager = new ProviderManager(
+            tokenAddress1,
+            tokenIdUint8Array1,
+            tokenId1,
+            STRICT_MINIMUM_PROVIDER_RESERVATION_AMOUNT,
+        );
+    });
+
+    it('should be removed from the removal queue when the provider states are valid but (owedBTC - reservedBTC) = strictMinimumProviderReservationAmount', () => {
+        const manager: ProviderManager = new ProviderManager(
+            tokenAddress1,
+            tokenIdUint8Array1,
+            tokenId1,
+            STRICT_MINIMUM_PROVIDER_RESERVATION_AMOUNT,
+        );
+    });
+
+    it('should return null when no provider found', () => {
+        const manager: ProviderManager = new ProviderManager(
+            tokenAddress1,
+            tokenIdUint8Array1,
+            tokenId1,
+            STRICT_MINIMUM_PROVIDER_RESERVATION_AMOUNT,
+        );
+    });
+});
+
+describe('ProviderManager getNextProviderWithLiquidity with only providers in priority queue tests', () => {
+    beforeEach(() => {
+        clearCachedProviders();
+        Blockchain.clearStorage();
+        Blockchain.clearMockedResults();
+    });
+});
+
+describe('ProviderManager getNextProviderWithLiquidity with only providers in standard queue tests', () => {
+    beforeEach(() => {
+        clearCachedProviders();
+        Blockchain.clearStorage();
+        Blockchain.clearMockedResults();
+    });
+});
+
+describe('ProviderManager getNextProviderWithLiquidity with only initial liquidity provider tests', () => {
+    beforeEach(() => {
+        clearCachedProviders();
+        Blockchain.clearStorage();
+        Blockchain.clearMockedResults();
     });
 });
