@@ -1,4 +1,4 @@
-import { Blockchain, BytesReader } from '../../../btc-runtime-new/runtime';
+import { Blockchain, BytesReader } from '@btc-vision/btc-runtime/runtime';
 import { LIQUIDITY_PROVIDER_POINTER, PROVIDER_LIQUIDITY_POINTER } from '../lib/StoredPointers';
 import { UserLiquidity } from '../data-types/UserLiquidity';
 import { u128, u256 } from '@btc-vision/as-bignum/assembly';

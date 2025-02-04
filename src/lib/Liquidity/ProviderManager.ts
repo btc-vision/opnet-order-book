@@ -22,6 +22,7 @@ import { getProvider, Provider } from '../Provider';
 import { StoredMapU256 } from '../../stored/StoredMapU256';
 
 export class ProviderManager {
+    private currentIndex: u64 = 0;
     private readonly _queue: StoredU256Array;
     private readonly _priorityQueue: StoredU256Array;
     private readonly _removalQueue: StoredU256Array;
@@ -29,8 +30,6 @@ export class ProviderManager {
     private readonly _initialLiquidityProvider: StoredU256;
     private readonly _lpBTCowed: StoredMapU256;
     private readonly _lpBTCowedReserved: StoredMapU256;
-
-    private currentIndex: u64 = 0;
     private currentIndexPriority: u64 = 0;
     private currentIndexRemoval: u64 = 0;
 
@@ -193,15 +192,16 @@ export class ProviderManager {
     }
 
     public resetProvider(provider: Provider, burnRemainingFunds: boolean = true): void {
+        //!!! Allow to burn initialprovider fund???
         if (burnRemainingFunds && !provider.liquidity.isZero()) {
             TransferHelper.safeTransfer(this.token, Address.dead(), provider.liquidity.toU256());
         }
 
         if (!u256.eq(provider.providerId, this._initialLiquidityProvider.value)) {
             if (provider.isPriority()) {
-                this._priorityQueue.delete(provider.indexedAt);
+                this._priorityQueue.delete(provider.indexedAt); //!!! Should check if in queue???
             } else {
-                this._queue.delete(provider.indexedAt);
+                this._queue.delete(provider.indexedAt); //!!! Should check if in queue??? Should check if not removal???
             }
         }
 
@@ -287,6 +287,7 @@ export class ProviderManager {
             }
             priorityIndex++;
         }
+
         this.previousReservationStartingIndex = priorityIndex;
     }
 
@@ -343,7 +344,7 @@ export class ProviderManager {
             if (provider.pendingRemoval && provider.isLp) {
                 const owedBTC = this.getBTCowed(providerId);
                 const reservedBTC = this.getBTCowedReserved(providerId);
-                const left = SafeMath.sub(owedBTC, reservedBTC);
+                const left = SafeMath.sub(owedBTC, reservedBTC); //!!! Overflow here
                 if (!left.isZero() && u256.gt(left, this.strictMinimumProviderReservationAmount)) {
                     // This is the next valid removal provider. We do NOT
                     // check provider.liquidity here, because they've already
@@ -468,7 +469,9 @@ export class ProviderManager {
             }
 
             if (provider.isPriority()) {
-                throw new Revert('Impossible state: provider is not priority in priority queue.');
+                throw new Revert(
+                    'Impossible state: provider cannot be priority in standard queue.',
+                );
             }
 
             if (u128.lt(provider.liquidity, provider.reserved)) {
@@ -500,6 +503,7 @@ export class ProviderManager {
             //Blockchain.log(`Is active: ${initProvider.isActive()}`);
 
             if (initProvider.isActive()) {
+                //!!!! Overflow here
                 const availableLiquidity: u128 = SafeMath.sub128(
                     initProvider.liquidity,
                     initProvider.reserved,
@@ -510,8 +514,9 @@ export class ProviderManager {
                 //    `Reserved liquidity: ${initProvider.reserved.toString()}, liquidity: ${initProvider.liquidity.toString()}`,
                 //);
 
+                // !!!! It is ok when availableLiquidity = 0
                 if (!availableLiquidity.isZero()) {
-                    initProvider.indexedAt = u32.MAX_VALUE;
+                    initProvider.indexedAt = u32.MAX_VALUE; //!!!! Ca sert a quoi? devrait etre u64????
                     return initProvider;
                 }
             }
